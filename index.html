@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Validate client delivery portal for video review, comments, approvals, and version history."
+    />
+    <title>Validate Delivery Portal</title>
+    <link rel="preconnect" href="https://createwithvalidate.com" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <section class="login-screen" id="loginScreen" data-bg-index="0">
+      <div class="login-photo-grid" aria-hidden="true">
+        <div class="bg-photo bg-photo-wide"></div>
+        <div class="bg-photo bg-photo-paynes"></div>
+        <div class="bg-photo bg-photo-court"></div>
+        <div class="bg-photo bg-photo-big-cedar"></div>
+        <div class="bg-photo bg-photo-herschend"></div>
+        <div class="bg-photo bg-photo-rink"></div>
+        <div class="bg-photo bg-photo-sdc"></div>
+        <div class="bg-photo bg-photo-lake"></div>
+        <div class="bg-photo bg-photo-christmas"></div>
+      </div>
+
+      <div class="login-brand">
+        <a class="brand" href="#" aria-label="Validate delivery portal">
+          <span class="brand-logo">
+            <img src="assets/validate-logo.png" alt="" onerror="this.hidden = true" />
+          </span>
+        </a>
+      </div>
+
+      <div class="login-panel">
+        <p class="eyebrow line-kicker">Client review portal</p>
+        <h1>Review the latest cut.</h1>
+        <p class="login-copy">
+          Open your project, watch the current version, leave notes, and approve the
+          final film when it is ready.
+        </p>
+
+        <form class="login-form" id="loginForm" novalidate>
+          <label>
+            Email
+            <input name="email" type="email" placeholder="client@example.com" />
+          </label>
+          <label id="passwordField">
+            Password
+            <input name="password" type="password" placeholder="Enter password" />
+          </label>
+          <label id="accessCodeField" hidden>
+            Review access code
+            <input name="accessCode" placeholder="Client project code" />
+          </label>
+          <button
+            class="primary-button"
+            type="button"
+            id="loginSubmit"
+            onclick="window.validatePortalLogin?.()"
+          >
+            Open review
+          </button>
+          <button
+            class="admin-access-button"
+            type="button"
+            id="adminAccess"
+            onclick="window.validatePortalToggleAdmin?.()"
+          >
+            Admin access
+          </button>
+        </form>
+      </div>
+
+      <div class="story-preview" aria-hidden="true">
+        <div class="story-frame">
+          <video
+            id="loginReel"
+            src="https://createwithvalidate.com/videos/header-loop-2.mp4"
+            autoplay
+            muted
+            playsinline
+            preload="auto"
+            disablepictureinpicture
+            controlslist="nodownload nofullscreen noremoteplayback"
+            tabindex="-1"
+          ></video>
+        </div>
+      </div>
+    </section>
+
+    <div class="shell" id="appShell" hidden>
+      <aside class="sidebar" aria-label="Primary">
+        <a class="brand" href="#" data-route="clients" aria-label="Validate portal home">
+          <span class="brand-logo">
+            <img src="assets/validate-logo.png" alt="" onerror="this.hidden = true" />
+          </span>
+        </a>
+
+        <nav class="nav-list">
+          <button class="nav-item active" data-route="clients">
+            <span class="icon">01</span>
+            Clients
+          </button>
+          <button class="nav-item" data-route="activity">
+            <span class="icon">02</span>
+            Activity
+          </button>
+          <button class="nav-item" data-route="settings">
+            <span class="icon">03</span>
+            Settings
+          </button>
+        </nav>
+
+        <div class="sidebar-footer">
+          <p>Secure review links, version notes, comments, and approvals for active cuts.</p>
+          <button class="ghost-button" id="copyClientLink">Copy review link</button>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Client delivery portal</p>
+            <h1 id="pageTitle">Clients</h1>
+          </div>
+          <div class="topbar-actions">
+            <span class="session-label" id="sessionLabel"></span>
+            <button class="ghost-button" id="toggleMode">Client preview</button>
+            <button class="ghost-button" id="signOut">Sign out</button>
+            <button class="primary-button" id="openCreate">New client</button>
+          </div>
+        </header>
+
+        <section class="hero-band" id="dashboardHero" data-bg-index="0">
+          <div class="dashboard-photo-grid" aria-hidden="true">
+            <div class="dashboard-photo dashboard-photo-taneycomo"></div>
+            <div class="dashboard-photo dashboard-photo-paynes"></div>
+            <div class="dashboard-photo dashboard-photo-big-cedar"></div>
+            <div class="dashboard-photo dashboard-photo-herschend"></div>
+            <div class="dashboard-photo dashboard-photo-sdc"></div>
+          </div>
+          <div class="hero-copy">
+            <p class="eyebrow">Film review, refined</p>
+            <h2>Give clients one beautiful place to review every cut.</h2>
+          </div>
+          <div class="hero-meta">
+            <span id="heroClientCount">0 clients</span>
+            <span id="heroProjectCount">0 active projects</span>
+            <span id="heroApprovalCount">0 approved</span>
+          </div>
+        </section>
+
+        <section id="viewRoot" class="view-root" aria-live="polite"></section>
+      </main>
+    </div>
+
+    <dialog id="createDialog" class="modal">
+      <form method="dialog" id="createForm">
+        <div class="modal-head">
+          <div>
+            <p class="eyebrow">Create</p>
+            <h2 id="dialogTitle">New client</h2>
+          </div>
+          <button class="icon-button" type="button" id="closeDialog" aria-label="Close">x</button>
+        </div>
+        <div class="form-grid" id="dialogFields"></div>
+        <menu class="modal-actions">
+          <button class="ghost-button" type="button" id="cancelDialog">Cancel</button>
+          <button class="primary-button" type="submit">Save</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <div class="toast" id="toast" role="status"></div>
+    <script src="app.js?v=12" defer></script>
+  </body>
+</html>
