@@ -609,11 +609,11 @@ button {
   flex-direction: column;
   min-width: min(560px, 100%);
   padding: 18px 22px 16px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 8px;
   background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.035)),
-    rgba(34, 34, 36, 0.72);
+    linear-gradient(135deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.012)),
+    rgba(8, 8, 9, 0.92);
 }
 
 .topbar.client-title-card .eyebrow {

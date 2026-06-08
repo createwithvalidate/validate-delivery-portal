@@ -464,11 +464,11 @@ function renderProjects() {
       <div class="workspace-head">
         <div>
           <p class="eyebrow">Projects</p>
-          <h2>Active video cuts</h2>
+          <h2>Projects</h2>
           <p class="muted">${client.summary}</p>
         </div>
         <div class="workspace-stats">
-          <span>${projects.length} active</span>
+          <span>${projects.length} projects</span>
           <span>${projects.filter((project) => project.status === "approved").length} approved</span>
         </div>
       </div>
