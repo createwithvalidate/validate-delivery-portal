@@ -18,6 +18,8 @@ const state = loadState();
 state.session ??= null;
 const root = document.querySelector("#viewRoot");
 const pageTitle = document.querySelector("#pageTitle");
+const pageEyebrow = document.querySelector(".topbar .eyebrow");
+const topbar = document.querySelector(".topbar");
 const loginScreen = document.querySelector("#loginScreen");
 const appShell = document.querySelector("#appShell");
 const dashboardHero = document.querySelector("#dashboardHero");
@@ -73,6 +75,12 @@ function saveState() {
   } catch {
     showToast("Browser storage is unavailable");
   }
+}
+
+function setPageHeader(title, eyebrow = "Client delivery portal", style = "") {
+  pageTitle.textContent = title;
+  pageEyebrow.textContent = eyebrow;
+  topbar.classList.toggle("client-title-card", style === "client");
 }
 
 function updateAuthView() {
@@ -395,7 +403,7 @@ function render() {
 
 function renderClients() {
   dashboardHero.hidden = false;
-  pageTitle.textContent = "Clients";
+  setPageHeader("Clients");
   document.querySelector("#openCreate").textContent = "New client";
   document.querySelector("#openCreate").hidden = state.session?.role !== "admin";
   createIntent = "client";
@@ -446,7 +454,7 @@ function renderProjects() {
     return;
   }
 
-  pageTitle.textContent = client.name;
+  setPageHeader(client.name, "Projects", "client");
   document.querySelector("#openCreate").textContent = "New project";
   createIntent = "project";
   const projects = state.projects.filter((project) => project.clientId === client.id && !project.archived);
@@ -521,7 +529,7 @@ function renderProjectDetail() {
 
   const client = state.clients.find((item) => item.id === project.clientId);
   const videos = state.videos.filter((video) => video.projectId === project.id);
-  pageTitle.textContent = project.name;
+  setPageHeader(project.name);
   document.querySelector("#openCreate").textContent = "Add video";
   createIntent = "video";
 
@@ -589,7 +597,7 @@ function renderReviewShell(isAdmin) {
   dashboardHero.hidden = true;
   const video = activeVideo();
   if (!video) {
-    pageTitle.textContent = isAdmin ? "Review" : "Client review";
+    setPageHeader(isAdmin ? "Review" : "Client review");
     document.querySelector("#openCreate").textContent = "New client";
     createIntent = "client";
     root.innerHTML = `
@@ -604,7 +612,7 @@ function renderReviewShell(isAdmin) {
   const versions = state.versions.filter((version) => version.videoId === video.id);
   const version = versions[0];
   const comments = state.comments.filter((comment) => comment.versionId === version?.id);
-  pageTitle.textContent = isAdmin ? video.title : project.name;
+  setPageHeader(isAdmin ? video.title : project.name);
   document.querySelector("#openCreate").textContent = isAdmin ? "Add version" : "Approve";
   document.querySelector("#openCreate").hidden = !isAdmin;
   createIntent = isAdmin ? "version" : "approve";
@@ -708,7 +716,7 @@ function renderReviewShell(isAdmin) {
 
 function renderActivity() {
   dashboardHero.hidden = true;
-  pageTitle.textContent = "Activity";
+  setPageHeader("Activity");
   document.querySelector("#openCreate").textContent = "New client";
   root.innerHTML = `
     <div class="panel stack">
@@ -720,7 +728,7 @@ function renderActivity() {
 
 function renderSettings() {
   dashboardHero.hidden = true;
-  pageTitle.textContent = "Settings";
+  setPageHeader("Settings");
   document.querySelector("#openCreate").textContent = "New client";
   root.innerHTML = `
     <div class="grid">
