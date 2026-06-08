@@ -451,32 +451,46 @@ function renderProjects() {
 
   root.innerHTML = `
     <div class="stack">
-      <div class="panel">
-        <p class="eyebrow">Client</p>
-        <h3>${client.name}</h3>
-        <p class="muted">${client.summary}</p>
+      <div class="panel client-summary">
+        <div>
+          <p class="eyebrow">Client workspace</p>
+          <h3>${client.name}</h3>
+          <p class="muted">${client.summary}</p>
+        </div>
+        <span class="metric">${projects.length} active projects</span>
       </div>
-      ${
-        projects.length
-          ? projects
-              .map(
-                (project) => `
-                  <div class="list-row">
-                    <div>
-                      <h3>${project.name}</h3>
-                      <p class="muted">${project.description}</p>
-                    </div>
-                    <div class="inline-actions">
-                      <span class="status-pill ${project.status === "approved" ? "approved" : ""}">${project.status}</span>
-                      <button class="ghost-button" data-project="${project.id}">Open</button>
-                      <button class="ghost-button" data-archive-project="${project.id}">Archive</button>
-                    </div>
-                  </div>
-                `,
-              )
-              .join("")
-          : `<div class="empty">No active projects yet.</div>`
-      }
+      <section class="project-section">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Projects</p>
+            <h3>Active video cuts</h3>
+          </div>
+          <span class="metric">${projects.length} active</span>
+        </div>
+        <div class="project-list">
+          ${
+            projects.length
+              ? projects
+                  .map(
+                    (project) => `
+                      <div class="list-row">
+                        <div>
+                          <h3>${project.name}</h3>
+                          <p class="muted">${project.description}</p>
+                        </div>
+                        <div class="inline-actions">
+                          <span class="status-pill ${project.status === "approved" ? "approved" : ""}">${project.status}</span>
+                          <button class="ghost-button" data-project="${project.id}">Open</button>
+                          <button class="ghost-button" data-archive-project="${project.id}">Archive</button>
+                        </div>
+                      </div>
+                    `,
+                  )
+                  .join("")
+              : `<div class="empty project-empty">No active projects yet.</div>`
+          }
+        </div>
+      </section>
     </div>
   `;
 

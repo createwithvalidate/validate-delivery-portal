@@ -846,7 +846,53 @@ button {
 
 .stack {
   display: grid;
-  gap: 14px;
+  gap: 18px;
+}
+
+.client-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  min-height: 118px;
+  padding: 20px 22px;
+  border-color: rgba(255, 255, 255, 0.18);
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.015)),
+    rgba(18, 18, 20, 0.88);
+}
+
+.client-summary h3 {
+  font-size: clamp(1.35rem, 2vw, 2rem);
+  letter-spacing: -0.03em;
+}
+
+.project-section {
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(7, 7, 8, 0.72);
+}
+
+.section-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.section-head h3 {
+  margin: 0;
+  font-size: 1.08rem;
+  letter-spacing: -0.01em;
+}
+
+.project-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
 }
 
 .list-row,
@@ -1033,6 +1079,12 @@ label {
 
   .grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .client-summary,
+  .section-head {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 
