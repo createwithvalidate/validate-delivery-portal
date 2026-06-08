@@ -88,7 +88,6 @@ function updateAuthView() {
 
   const roleLabel = state.session.role === "admin" ? "Admin" : "Client";
   sessionLabel.textContent = `${roleLabel} view`;
-  document.querySelector("#toggleMode").hidden = state.session.role !== "admin";
   document.querySelector("#openCreate").hidden = state.session.role !== "admin" || state.mode === "client";
 }
 
@@ -905,13 +904,6 @@ document.querySelector("#signOut").addEventListener("click", () => {
   state.mode = "admin";
   saveState();
   loginForm.reset();
-  render();
-});
-document.querySelector("#toggleMode").addEventListener("click", () => {
-  state.mode = state.mode === "admin" ? "client" : "admin";
-  document.querySelector("#toggleMode").textContent =
-    state.mode === "admin" ? "Client preview" : "Admin view";
-  saveState();
   render();
 });
 document.querySelector("#copyClientLink").addEventListener("click", async () => {
