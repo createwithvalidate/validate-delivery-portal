@@ -333,14 +333,7 @@ button {
 }
 
 .story-preview::after {
-  content: "";
-  position: absolute;
-  right: -22px;
-  bottom: -18px;
-  width: 48%;
-  height: 31%;
-  border-right: 1px solid rgba(251, 251, 251, 0.14);
-  border-bottom: 1px solid rgba(251, 251, 251, 0.14);
+  content: none;
 }
 
 .story-frame {
@@ -350,13 +343,11 @@ button {
   min-height: 0;
   min-height: clamp(310px, 32vw, 430px);
   padding: 0;
-  border: clamp(18px, 2vw, 26px) solid rgba(14, 14, 15, 0.95);
-  border-radius: 20px;
+  border: 0;
+  border-radius: 10px;
   overflow: hidden;
-  background: #080809;
-  box-shadow:
-    0 35px 96px rgba(0, 0, 0, 0.42),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+  background: transparent;
+  box-shadow: 0 28px 76px rgba(0, 0, 0, 0.32);
 }
 
 .story-frame video {
