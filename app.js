@@ -46,16 +46,24 @@ const loginReelSources = [
 ];
 
 function loadState() {
-  if (new URLSearchParams(window.location.search).has("reset")) {
-    localStorage.removeItem(storeKey);
-    history.replaceState(null, "", location.pathname);
+  try {
+    if (new URLSearchParams(window.location.search).has("reset")) {
+      localStorage.removeItem(storeKey);
+      history.replaceState(null, "", location.pathname);
+    }
+    const saved = localStorage.getItem(storeKey);
+    return saved ? JSON.parse(saved) : structuredClone(seedData);
+  } catch {
+    return structuredClone(seedData);
   }
-  const saved = localStorage.getItem(storeKey);
-  return saved ? JSON.parse(saved) : structuredClone(seedData);
 }
 
 function saveState() {
-  localStorage.setItem(storeKey, JSON.stringify(state));
+  try {
+    localStorage.setItem(storeKey, JSON.stringify(state));
+  } catch {
+    showToast("Browser storage is unavailable");
+  }
 }
 
 function updateAuthView() {
@@ -299,8 +307,27 @@ async function createBunnyUploadCredentials({ title }) {
   return result;
 }
 
-function uploadToBunny(file, credentials, onProgress) {
-  const tusClient = window.tus;
+function loadTusClient() {
+  if (window.tus?.Upload) return Promise.resolve(window.tus);
+  if (window.tusClient?.Upload) return Promise.resolve(window.tusClient);
+
+  return new Promise((resolve, reject) => {
+    const existingScript = document.querySelector("[data-tus-loader]");
+    const script = existingScript || document.createElement("script");
+    script.dataset.tusLoader = "true";
+    script.src = "https://cdn.jsdelivr.net/npm/tus-js-client@4.3.1/dist/tus.min.js";
+    script.onload = () => {
+      const tusClient = window.tus || window.tusClient;
+      if (tusClient?.Upload) resolve(tusClient);
+      else reject(new Error("Video uploader could not load"));
+    };
+    script.onerror = () => reject(new Error("Video uploader could not load"));
+    if (!existingScript) document.head.append(script);
+  });
+}
+
+async function uploadToBunny(file, credentials, onProgress) {
+  const tusClient = await loadTusClient();
   if (!tusClient?.Upload) {
     throw new Error("Video uploader is still loading. Try again in a moment.");
   }
