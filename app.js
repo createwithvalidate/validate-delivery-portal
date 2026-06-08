@@ -394,6 +394,7 @@ function render() {
 }
 
 function renderClients() {
+  dashboardHero.hidden = false;
   pageTitle.textContent = "Clients";
   document.querySelector("#openCreate").textContent = "New client";
   document.querySelector("#openCreate").hidden = state.session?.role !== "admin";
@@ -438,6 +439,7 @@ function renderClients() {
 }
 
 function renderProjects() {
+  dashboardHero.hidden = true;
   const client = activeClient();
   if (!client) {
     renderClients();
@@ -450,48 +452,42 @@ function renderProjects() {
   const projects = state.projects.filter((project) => project.clientId === client.id && !project.archived);
 
   root.innerHTML = `
-    <div class="stack">
-      <div class="panel client-summary">
+    <section class="workspace-panel">
+      <div class="workspace-head">
         <div>
-          <p class="eyebrow">Client workspace</p>
-          <h3>${client.name}</h3>
+          <p class="eyebrow">Projects</p>
+          <h2>Active video cuts</h2>
           <p class="muted">${client.summary}</p>
         </div>
-        <span class="metric">${projects.length} active projects</span>
+        <div class="workspace-stats">
+          <span>${projects.length} active</span>
+          <span>${projects.filter((project) => project.status === "approved").length} approved</span>
+        </div>
       </div>
-      <section class="project-section">
-        <div class="section-head">
-          <div>
-            <p class="eyebrow">Projects</p>
-            <h3>Active video cuts</h3>
-          </div>
-          <span class="metric">${projects.length} active</span>
-        </div>
-        <div class="project-list">
-          ${
-            projects.length
-              ? projects
-                  .map(
-                    (project) => `
-                      <div class="list-row">
-                        <div>
-                          <h3>${project.name}</h3>
-                          <p class="muted">${project.description}</p>
-                        </div>
-                        <div class="inline-actions">
-                          <span class="status-pill ${project.status === "approved" ? "approved" : ""}">${project.status}</span>
-                          <button class="ghost-button" data-project="${project.id}">Open</button>
-                          <button class="ghost-button" data-archive-project="${project.id}">Archive</button>
-                        </div>
+      <div class="project-list">
+        ${
+          projects.length
+            ? projects
+                .map(
+                  (project) => `
+                    <div class="list-row">
+                      <div>
+                        <h3>${project.name}</h3>
+                        <p class="muted">${project.description}</p>
                       </div>
-                    `,
-                  )
-                  .join("")
-              : `<div class="empty project-empty">No active projects yet.</div>`
-          }
-        </div>
-      </section>
-    </div>
+                      <div class="inline-actions">
+                        <span class="status-pill ${project.status === "approved" ? "approved" : ""}">${project.status}</span>
+                        <button class="ghost-button" data-project="${project.id}">Open</button>
+                        <button class="ghost-button" data-archive-project="${project.id}">Archive</button>
+                      </div>
+                    </div>
+                  `,
+                )
+                .join("")
+            : `<div class="empty project-empty">No active projects yet. Create a project when a new cut is ready for review.</div>`
+        }
+      </div>
+    </section>
   `;
 
   root.querySelectorAll("[data-project]").forEach((button) => {
@@ -516,6 +512,7 @@ function renderProjects() {
 }
 
 function renderProjectDetail() {
+  dashboardHero.hidden = true;
   const project = activeProject();
   if (!project) {
     renderClients();
@@ -589,6 +586,7 @@ function renderClientReview() {
 }
 
 function renderReviewShell(isAdmin) {
+  dashboardHero.hidden = true;
   const video = activeVideo();
   if (!video) {
     pageTitle.textContent = isAdmin ? "Review" : "Client review";
@@ -709,6 +707,7 @@ function renderReviewShell(isAdmin) {
 }
 
 function renderActivity() {
+  dashboardHero.hidden = true;
   pageTitle.textContent = "Activity";
   document.querySelector("#openCreate").textContent = "New client";
   root.innerHTML = `
@@ -720,6 +719,7 @@ function renderActivity() {
 }
 
 function renderSettings() {
+  dashboardHero.hidden = true;
   pageTitle.textContent = "Settings";
   document.querySelector("#openCreate").textContent = "New client";
   root.innerHTML = `
