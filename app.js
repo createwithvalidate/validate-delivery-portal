@@ -13,6 +13,7 @@ const seedData = {
 };
 
 const storeKey = "validate-delivery-portal-empty-v2";
+const productionOrigin = "https://validate-delivery-portal.vercel.app";
 const state = loadState();
 state.session ??= null;
 const root = document.querySelector("#viewRoot");
@@ -44,6 +45,14 @@ const loginReelSources = [
   "https://createwithvalidate.com/videos/header-loop-2.mp4",
   "https://createwithvalidate.com/videos/fishing-loop.mp4",
 ];
+
+function apiUrl(path) {
+  const isLocalPreview =
+    location.protocol === "file:" ||
+    location.hostname === "localhost" ||
+    location.hostname === "127.0.0.1";
+  return `${isLocalPreview ? productionOrigin : ""}${path}`;
+}
 
 function loadState() {
   try {
@@ -267,7 +276,7 @@ async function sendLatestToClient(button) {
   button.textContent = "Sending...";
 
   try {
-    const response = await fetch("/api/send-review-email", {
+    const response = await fetch(apiUrl("/api/send-review-email"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -297,7 +306,7 @@ async function sendLatestToClient(button) {
 }
 
 async function createBunnyUploadCredentials({ title }) {
-  const response = await fetch("/api/create-bunny-upload", {
+  const response = await fetch(apiUrl("/api/create-bunny-upload"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ title }),

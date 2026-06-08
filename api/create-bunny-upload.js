@@ -3,6 +3,9 @@ const crypto = require("node:crypto");
 function sendJson(response, statusCode, body) {
   response.statusCode = statusCode;
   response.setHeader("Content-Type", "application/json");
+  response.setHeader("Access-Control-Allow-Origin", "*");
+  response.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  response.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   response.end(JSON.stringify(body));
 }
 
@@ -17,6 +20,11 @@ async function parseRequestBody(request) {
 }
 
 module.exports = async function handler(request, response) {
+  if (request.method === "OPTIONS") {
+    sendJson(response, 200, { ok: true });
+    return;
+  }
+
   if (request.method !== "POST") {
     response.setHeader("Allow", "POST");
     sendJson(response, 405, { error: "Method not allowed" });
