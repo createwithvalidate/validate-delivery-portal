@@ -14,6 +14,7 @@ A first-pass client delivery portal for Validate video review, comments, approva
 - Client preview mode
 - Create client/project/video/version flows
 - Resend-ready client email notifications
+- Bunny Stream upload handshake for browser video uploads
 - Static Vercel deployment config
 
 The prototype persists demo data in browser `localStorage`.
@@ -75,6 +76,21 @@ PORTAL_REPLY_TO_EMAIL=your-reply-address@your-verified-domain.com
 ```
 
 `PORTAL_FROM_EMAIL` must use a domain that is verified in Resend.
+
+## Bunny Stream setup
+
+The `Upload new version` form can upload a selected video file to Bunny Stream.
+
+The browser asks `/api/create-bunny-upload` for temporary upload credentials, then uploads directly to Bunny's TUS endpoint. This keeps the Bunny Stream API key out of client-side code and avoids pushing large video files through Vercel.
+
+In Vercel, add:
+
+```txt
+BUNNY_STREAM_API_KEY=
+BUNNY_STREAM_LIBRARY_ID=
+```
+
+`BUNNY_STREAM_API_KEY` is the API key from the specific Bunny Stream video library. `BUNNY_STREAM_LIBRARY_ID` is the numeric Video Library ID from that same Bunny Stream library.
 
 ## Backend upgrade path
 

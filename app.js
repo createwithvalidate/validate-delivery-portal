@@ -288,6 +288,62 @@ async function sendLatestToClient(button) {
   }
 }
 
+async function createBunnyUploadCredentials({ title }) {
+  const response = await fetch("/api/create-bunny-upload", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || "Bunny upload could not start");
+  return result;
+}
+
+function uploadToBunny(file, credentials, onProgress) {
+  const tusClient = window.tus;
+  if (!tusClient?.Upload) {
+    throw new Error("Video uploader is still loading. Try again in a moment.");
+  }
+
+  return new Promise((resolve, reject) => {
+    const upload = new tusClient.Upload(file, {
+      endpoint: credentials.endpoint,
+      retryDelays: [0, 3000, 5000, 10000, 20000],
+      headers: {
+        AuthorizationSignature: credentials.signature,
+        AuthorizationExpire: String(credentials.expirationTime),
+        VideoId: credentials.videoId,
+        LibraryId: String(credentials.libraryId),
+      },
+      metadata: {
+        filetype: file.type || "video/mp4",
+        title: file.name,
+      },
+      onError: reject,
+      onProgress: (bytesUploaded, bytesTotal) => {
+        const percent = bytesTotal ? Math.round((bytesUploaded / bytesTotal) * 100) : 0;
+        onProgress(percent);
+      },
+      onSuccess: () => resolve(credentials),
+    });
+
+    upload.findPreviousUploads().then((previousUploads) => {
+      if (previousUploads.length) upload.resumeFromPreviousUpload(previousUploads[0]);
+      upload.start();
+    });
+  });
+}
+
+async function uploadVersionFileToBunny({ file, title, button }) {
+  button.textContent = "Creating Bunny video...";
+  const credentials = await createBunnyUploadCredentials({ title });
+  button.textContent = "Uploading 0%";
+  await uploadToBunny(file, credentials, (percent) => {
+    button.textContent = `Uploading ${percent}%`;
+  });
+  return credentials;
+}
+
 function render() {
   updateAuthView();
   if (!state.session) return;
@@ -660,6 +716,7 @@ function openDialog(intent = createIntent) {
     version: [
       ["label", "Version label", "Version 4"],
       ["provider", "Provider", "Bunny Stream"],
+      ["file", "Video file", ""],
       ["embedUrl", "Embed URL", ""],
       ["note", "Version note", "Updated music and end card."],
     ],
@@ -686,7 +743,13 @@ function openDialog(intent = createIntent) {
       ([name, label, placeholder]) => `
         <label>
           ${label}
-          ${name === "note" || name === "summary" || name === "description" ? `<textarea name="${name}" placeholder="${placeholder}"></textarea>` : `<input name="${name}" placeholder="${placeholder}" />`}
+          ${
+            name === "note" || name === "summary" || name === "description"
+              ? `<textarea name="${name}" placeholder="${placeholder}"></textarea>`
+              : name === "file"
+                ? `<input name="${name}" type="file" accept="video/*" />`
+                : `<input name="${name}" placeholder="${placeholder}" />`
+          }
         </label>
       `,
     )
@@ -695,67 +758,94 @@ function openDialog(intent = createIntent) {
   dialog.showModal();
 }
 
-createForm.addEventListener("submit", (event) => {
+createForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const form = new FormData(createForm);
   const nowId = Date.now();
+  const saveButton = createForm.querySelector('button[type="submit"]');
+  const originalSaveText = saveButton.textContent;
+  saveButton.disabled = true;
 
-  if (createIntent === "client") {
-    const name = form.get("name") || "New Client";
-    state.clients.push({
-      id: slug(name) || `client-${nowId}`,
-      name,
-      contact: form.get("contact") || "Primary contact",
-      email: form.get("email") || "",
-      summary: form.get("summary") || "New client workspace.",
-      archived: false,
-    });
+  try {
+    if (createIntent === "client") {
+      const name = form.get("name") || "New Client";
+      state.clients.push({
+        id: slug(name) || `client-${nowId}`,
+        name,
+        contact: form.get("contact") || "Primary contact",
+        email: form.get("email") || "",
+        summary: form.get("summary") || "New client workspace.",
+        archived: false,
+      });
+    }
+
+    if (createIntent === "project") {
+      const name = form.get("name") || "New Project";
+      state.projects.unshift({
+        id: slug(name) || `project-${nowId}`,
+        clientId: activeClient().id,
+        name,
+        status: form.get("status") || "review",
+        description: form.get("description") || "Video delivery project.",
+        archived: false,
+      });
+    }
+
+    if (createIntent === "video") {
+      const title = form.get("title") || "New Video";
+      state.videos.unshift({
+        id: slug(title) || `video-${nowId}`,
+        projectId: activeProject().id,
+        title,
+        status: "draft",
+        due: form.get("due") || "Soon",
+      });
+    }
+
+    if (createIntent === "version") {
+      const file = form.get("file");
+      const label = form.get("label") || "New version";
+      const provider = form.get("provider") || "Bunny Stream";
+      let embedUrl = form.get("embedUrl") || "";
+      let bunnyVideoId = "";
+
+      if (file?.size) {
+        const upload = await uploadVersionFileToBunny({
+          file,
+          title: `${activeVideo().title} - ${label}`,
+          button: saveButton,
+        });
+        embedUrl = upload.embedUrl;
+        bunnyVideoId = upload.videoId;
+      }
+
+      state.versions.unshift({
+        id: `version-${nowId}`,
+        videoId: activeVideo().id,
+        label,
+        provider,
+        embedUrl,
+        bunnyVideoId,
+        note: form.get("note") || "New review version.",
+        createdAt: "Just now",
+        approved: false,
+      });
+    }
+
+    saveState();
+    dialog.close();
+    createForm.reset();
+    showToast(createIntent === "version" ? "Version uploaded" : "Saved");
+    if (createIntent === "project") renderProjects();
+    else if (createIntent === "video") renderProjectDetail();
+    else if (createIntent === "version") renderReviewShell(state.mode === "admin");
+    else renderClients();
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    saveButton.disabled = false;
+    saveButton.textContent = originalSaveText;
   }
-
-  if (createIntent === "project") {
-    const name = form.get("name") || "New Project";
-    state.projects.unshift({
-      id: slug(name) || `project-${nowId}`,
-      clientId: activeClient().id,
-      name,
-      status: form.get("status") || "review",
-      description: form.get("description") || "Video delivery project.",
-      archived: false,
-    });
-  }
-
-  if (createIntent === "video") {
-    const title = form.get("title") || "New Video";
-    state.videos.unshift({
-      id: slug(title) || `video-${nowId}`,
-      projectId: activeProject().id,
-      title,
-      status: "draft",
-      due: form.get("due") || "Soon",
-    });
-  }
-
-  if (createIntent === "version") {
-    state.versions.unshift({
-      id: `version-${nowId}`,
-      videoId: activeVideo().id,
-      label: form.get("label") || "New version",
-      provider: form.get("provider") || "Bunny Stream",
-      embedUrl: form.get("embedUrl") || "",
-      note: form.get("note") || "New review version.",
-      createdAt: "Just now",
-      approved: false,
-    });
-  }
-
-  saveState();
-  dialog.close();
-  createForm.reset();
-  showToast("Saved");
-  if (createIntent === "project") renderProjects();
-  else if (createIntent === "video") renderProjectDetail();
-  else if (createIntent === "version") renderReviewShell(state.mode === "admin");
-  else renderClients();
 });
 
 document.querySelectorAll("[data-route]").forEach((item) => {
