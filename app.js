@@ -86,8 +86,7 @@ function updateAuthView() {
   if (!isLoggedIn) return;
   startDashboardBackgroundRotation();
 
-  const roleLabel = state.session.role === "admin" ? "Admin" : "Client";
-  sessionLabel.textContent = `${roleLabel} view`;
+  sessionLabel.textContent = "";
   document.querySelector("#openCreate").hidden = state.session.role !== "admin" || state.mode === "client";
 }
 
