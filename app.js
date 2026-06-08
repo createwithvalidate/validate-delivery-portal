@@ -12,7 +12,7 @@ const seedData = {
   activity: [],
 };
 
-const storeKey = "validate-delivery-portal-empty-v2";
+const storeKey = "validate-delivery-portal-empty-v3";
 const productionOrigin = "https://validate-delivery-portal.vercel.app";
 const state = loadState();
 state.session ??= null;
