@@ -1670,7 +1670,10 @@ function renderClientDashboard() {
     Number.isFinite(meta.projectCount) ? `${meta.projectCount} project${meta.projectCount === 1 ? "" : "s"} loaded` : "",
     meta.usingServiceRole ? "server verified" : meta.source ? "browser-policy check" : "",
   ].filter(Boolean);
-  setPageHeader(client.name, client.contact || "Client dashboard", "client");
+  const accountName = state.clientAccount?.name || client.contact || accountEmail || client.name;
+  const workspaceName =
+    client.id !== state.clientAccount?.id && client.name !== accountName ? client.name : "Client dashboard";
+  setPageHeader(accountName, workspaceName, "client");
   document.querySelector("#openCreate").hidden = true;
   createIntent = "client";
 
