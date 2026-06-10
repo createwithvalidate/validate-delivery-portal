@@ -58,6 +58,7 @@ let syncInterval = null;
 let isSyncing = false;
 let syncPaused = false;
 let isSavingCreateForm = false;
+let lastPortalFingerprint = "";
 const loginBackgroundCount = 9;
 const dashboardBackgroundCount = 5;
 const loginReelSources = [
@@ -179,6 +180,7 @@ async function restoreSupabaseSession() {
   const profile = await getCurrentProfile(data.user);
   applyAccountSession(data.user, profile);
   await loadPortalDataFromSupabase();
+  lastPortalFingerprint = portalFingerprint();
   saveState();
   return true;
 }
@@ -425,6 +427,7 @@ async function savePortalData() {
 async function syncPortalData({ announce = false, rerender = true } = {}) {
   if (!state.session || isSyncing || syncPaused) return false;
   isSyncing = true;
+  const previousFingerprint = lastPortalFingerprint || portalFingerprint();
   const previousSelection = {
     selectedClientId: state.selectedClientId,
     selectedProjectId: state.selectedProjectId,
@@ -442,8 +445,11 @@ async function syncPortalData({ announce = false, rerender = true } = {}) {
     state.selectedVideoId = state.videos.some((video) => video.id === previousSelection.selectedVideoId)
       ? previousSelection.selectedVideoId
       : state.videos.find((video) => video.projectId === state.selectedProjectId)?.id || "";
+    const nextFingerprint = portalFingerprint();
+    const hasChanged = nextFingerprint !== previousFingerprint;
+    lastPortalFingerprint = nextFingerprint;
     saveState();
-    if (rerender) renderCurrentView();
+    if (rerender && hasChanged) renderCurrentView();
     if (announce) showToast("Synced");
     return true;
   } catch (error) {
@@ -485,6 +491,7 @@ async function saveAndReloadPortalData() {
   state.selectedVideoId = state.videos.some((video) => video.id === previousSelection.selectedVideoId)
     ? previousSelection.selectedVideoId
     : state.videos.find((video) => video.projectId === state.selectedProjectId)?.id || "";
+  lastPortalFingerprint = portalFingerprint();
   saveState();
 }
 
@@ -619,6 +626,17 @@ function upsertById(collection, item) {
   else collection.unshift({ ...item });
 }
 
+function portalFingerprint() {
+  return JSON.stringify({
+    clients: state.clients,
+    projects: state.projects,
+    videos: state.videos,
+    versions: state.versions,
+    comments: state.comments,
+    deliveredProjectIds: state.deliveredProjectIds,
+  });
+}
+
 function activeClientAccount() {
   if (state.mode !== "client") return activeClient();
   return (
@@ -724,6 +742,7 @@ async function completeLogin() {
       const { user, profile } = session;
       applyAccountSession(user, profile);
       await loadPortalDataFromSupabase();
+      lastPortalFingerprint = portalFingerprint();
       saveState();
       showToast(`Signed in as ${state.session.role}`);
       render();
@@ -787,6 +806,7 @@ async function openReviewFromHash({ showMissingMessage = false } = {}) {
 
   try {
     await loadPortalDataFromSupabase();
+    lastPortalFingerprint = portalFingerprint();
   } catch (error) {
     console.warn("Supabase review link load failed", error);
   }
