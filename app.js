@@ -1681,58 +1681,44 @@ function renderClientDashboard() {
     <section class="workspace-panel">
       <div class="workspace-head">
         <div>
-          <h2>Your review dashboard</h2>
-          <p class="muted">Open a video to watch versions, leave notes, and approve the final cut when it is ready.</p>
+          <h2>Projects</h2>
+          <p class="muted">Open a project to watch versions, leave notes, and approve the final cut when it is ready.</p>
         </div>
         <div class="workspace-stats">
           <span>${projects.length} projects</span>
           <span>${projects.reduce((total, project) => total + projectVersionCount(project.id), 0)} versions</span>
         </div>
       </div>
-      <div class="project-list">
+      <div class="${projects.length ? "grid" : "project-list"}">
         ${
           projects.length
             ? projects
                 .map((project) => {
                   const videos = projectVideos(project.id);
+                  const versions = videos.flatMap((video) => videoVersions(video.id));
+                  const latest = versions[0];
+                  const approvedCount = versions.filter((version) => version.approved).length;
+                  const noteCount = versions.reduce(
+                    (total, version) => total + state.comments.filter((comment) => comment.versionId === version.id).length,
+                    0,
+                  );
                   return `
-                    <div class="client-project-block">
-                      <div class="client-project-head">
-                        <div>
-                          <p class="eyebrow">${project.status}</p>
-                          <h3>${project.name}</h3>
-                          <p class="muted">${project.description}</p>
-                        </div>
-                        <span class="metric">${videos.length} videos</span>
+                    <article class="card client-project-card">
+                      <p class="eyebrow">${project.status}</p>
+                      <h3>${project.name}</h3>
+                      <p>${project.description || "Review files and notes for this project."}</p>
+                      <div class="meta-strip">
+                        <span>${videos.length} video${videos.length === 1 ? "" : "s"}</span>
+                        <span>${versions.length} version${versions.length === 1 ? "" : "s"}</span>
+                        <span>${noteCount} note${noteCount === 1 ? "" : "s"}</span>
                       </div>
-                      <div class="project-list">
-                        ${
-                          videos.length
-                            ? videos
-                                .map((video) => {
-                                  const version = latestVersion(video.id);
-                                  return `
-                                    <div class="list-row">
-                                      <div>
-                                        <h3>${video.title}</h3>
-                                        <p class="muted">${version?.label || "No versions yet"}${version?.note ? ` - ${version.note}` : ""}</p>
-                                        <div class="meta-strip">
-                                          <span>${videoVersions(video.id).length} versions</span>
-                                          <span>${version?.approved ? "approved" : "in review"}</span>
-                                        </div>
-                                      </div>
-                                      <div class="inline-actions">
-                                        <span class="status-pill ${version?.approved ? "approved" : ""}">${version?.approved ? "approved" : video.status}</span>
-                                        <button class="ghost-button" data-client-review="${video.id}">Open review</button>
-                                      </div>
-                                    </div>
-                                  `;
-                                })
-                                .join("")
-                            : `<div class="empty compact-empty">No videos are ready yet.</div>`
-                        }
+                      <div class="card-footer">
+                        <span class="metric">${latest?.approved ? "approved" : approvedCount ? `${approvedCount} approved` : "in review"}</span>
+                        <button class="ghost-button" data-client-project="${project.id}" ${videos.length ? "" : "disabled"}>
+                          ${videos.length ? "Open project" : "No videos yet"}
+                        </button>
                       </div>
-                    </div>
+                    </article>
                   `;
                 })
                 .join("")
@@ -1758,12 +1744,16 @@ function renderClientDashboard() {
     refreshPortalData({ openHash: true, showMissingMessage: true });
   });
 
-  root.querySelectorAll("[data-client-review]").forEach((button) => {
+  root.querySelectorAll("[data-client-project]").forEach((button) => {
     button.addEventListener("click", () => {
-      state.selectedVideoId = button.dataset.clientReview;
-      const video = activeVideo();
-      const project = state.projects.find((item) => item.id === video?.projectId);
-      if (project) state.selectedProjectId = project.id;
+      const projectId = button.dataset.clientProject;
+      const video = projectVideos(projectId)[0];
+      if (!video) {
+        showToast("No videos are ready for this project yet");
+        return;
+      }
+      state.selectedProjectId = projectId;
+      state.selectedVideoId = video.id;
       saveState();
       renderClientReview();
     });
