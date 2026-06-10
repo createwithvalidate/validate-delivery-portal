@@ -993,12 +993,21 @@ async function uploadToBunny(file, credentials, onProgress) {
 
 async function uploadVersionFileToBunny({ file, title, button }) {
   button.textContent = "Creating Bunny video...";
-  const credentials = await createBunnyUploadCredentials({ title });
+  let credentials;
+  try {
+    credentials = await createBunnyUploadCredentials({ title });
+  } catch (error) {
+    throw new Error(`Could not create Bunny video: ${error.message}`);
+  }
   credentials.title = title;
   button.textContent = "Uploading 0%";
-  await uploadToBunny(file, credentials, (percent) => {
-    button.textContent = `Uploading ${percent}%`;
-  });
+  try {
+    await uploadToBunny(file, credentials, (percent) => {
+      button.textContent = `Uploading ${percent}%`;
+    });
+  } catch (error) {
+    throw new Error(`Bunny upload failed: ${error.message}`);
+  }
   return credentials;
 }
 
@@ -1571,6 +1580,11 @@ function openDialog(intent = createIntent) {
     video: [
       ["title", "Video title", "Launch Film"],
       ["due", "Due", "June 21"],
+      ["label", "Version label", "Version 1"],
+      ["provider", "Provider", "Bunny Stream"],
+      ["file", "Video file", ""],
+      ["embedUrl", "Embed URL", ""],
+      ["note", "Version note", "First cut for review."],
     ],
     version: [
       ["label", "Version label", "Version 4"],
@@ -1607,7 +1621,7 @@ function openDialog(intent = createIntent) {
     version: "Upload new version",
   }[intent];
   if (createSubmit) {
-    createSubmit.textContent = intent === "version" ? "Upload version" : "Save";
+    createSubmit.textContent = intent === "version" || intent === "video" ? "Upload" : "Save";
     createSubmit.disabled = false;
   }
 
@@ -1654,8 +1668,9 @@ async function handleCreateFormSubmit(event) {
     selectedVideoId: state.selectedVideoId,
   };
   saveButton.disabled = true;
-  saveButton.textContent = createIntent === "version" ? "Starting upload..." : "Saving...";
-  showToast(createIntent === "version" ? "Starting upload..." : "Saving...");
+  const uploadsVideo = createIntent === "version" || createIntent === "video";
+  saveButton.textContent = uploadsVideo ? "Starting upload..." : "Saving...";
+  showToast(uploadsVideo ? "Starting upload..." : "Saving...");
   syncPaused = true;
 
   try {
@@ -1686,14 +1701,45 @@ async function handleCreateFormSubmit(event) {
     if (createIntent === "video") {
       const title = form.get("title") || "New Video";
       const videoId = `${slug(title) || "video"}-${nowId}`;
-      state.videos.unshift({
+      const video = {
         id: videoId,
         projectId: activeProject().id,
         title,
         status: "draft",
         due: form.get("due") || "Soon",
-      });
+      };
+      state.videos.unshift(video);
       state.selectedVideoId = videoId;
+
+      const file = form.get("file");
+      const label = form.get("label") || "Version 1";
+      const provider = form.get("provider") || "Bunny Stream";
+      let embedUrl = form.get("embedUrl") || "";
+      let bunnyVideoId = "";
+
+      if (file?.size) {
+        const upload = await uploadVersionFileToBunny({
+          file,
+          title: `${video.title} - ${label}`,
+          button: saveButton,
+        });
+        embedUrl = upload.embedUrl;
+        bunnyVideoId = upload.videoId;
+      }
+
+      if (embedUrl.trim() || bunnyVideoId) {
+        state.versions.unshift({
+          id: `version-${nowId}`,
+          videoId,
+          label,
+          provider,
+          embedUrl,
+          bunnyVideoId,
+          note: form.get("note") || "New review version.",
+          createdAt: "Just now",
+          approved: false,
+        });
+      }
     }
 
     if (createIntent === "version") {
@@ -1754,7 +1800,7 @@ async function handleCreateFormSubmit(event) {
     await saveAndReloadPortalData();
     dialog.close();
     createForm.reset();
-    showToast(createIntent === "version" ? "Version uploaded" : "Saved");
+    showToast(uploadsVideo ? "Video saved" : "Saved");
     if (createIntent === "project") renderProjects();
     else if (createIntent === "video") renderProjectDetail();
     else if (createIntent === "version") renderReviewShell(state.mode === "admin");
