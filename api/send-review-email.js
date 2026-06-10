@@ -57,16 +57,46 @@ function buildEmailHtml(payload) {
           <h2 style="margin:0 0 14px;font-size:22px;">${videoTitle}</h2>
           <p style="margin:0;color:#deded9;line-height:1.6;">${versionNote}</p>
         </div>
-        <a href="${reviewUrl}" style="display:inline-block;background:#f8f8f4;color:#090909;text-decoration:none;font-weight:700;border-radius:8px;padding:14px 18px;">
-          Open review
-        </a>
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:26px 0 0;">
+          <tr>
+            <td bgcolor="#f8f8f4" style="border-radius:8px;text-align:center;">
+              <a
+                href="${reviewUrl}"
+                target="_blank"
+                style="background:#f8f8f4;border:1px solid #f8f8f4;border-radius:8px;color:#090909;display:inline-block;font-size:16px;font-weight:700;line-height:1;text-decoration:none;padding:16px 24px;min-width:180px;"
+              >
+                Open review
+              </a>
+            </td>
+          </tr>
+        </table>
         <p style="font-size:13px;color:#8f8f8a;margin-top:28px;line-height:1.5;">
           If the button does not work, paste this link into your browser:<br />
-          <span style="color:#cfcfca;">${reviewUrl}</span>
+          <a href="${reviewUrl}" target="_blank" style="color:#f8f8f4;text-decoration:underline;word-break:break-all;">${reviewUrl}</a>
         </p>
       </div>
     </div>
   `;
+}
+
+function buildEmailText(payload) {
+  const clientName = payload.clientName || "there";
+  const projectName = payload.projectName || "your project";
+  const videoTitle = payload.videoTitle || "Latest cut";
+  const versionLabel = payload.versionLabel || "New version";
+  const versionNote = payload.versionNote || "A new review version is ready.";
+
+  return [
+    `Hi ${clientName},`,
+    "",
+    `${versionLabel} is ready for review.`,
+    `Project: ${projectName}`,
+    `Video: ${videoTitle}`,
+    "",
+    versionNote,
+    "",
+    `Open review: ${payload.reviewUrl}`,
+  ].join("\n");
 }
 
 module.exports = async function handler(request, response) {
@@ -115,6 +145,7 @@ module.exports = async function handler(request, response) {
     to: [payload.clientEmail],
     subject: `${payload.videoTitle || "New video"} is ready for review`,
     html: buildEmailHtml(payload),
+    text: buildEmailText(payload),
   };
 
   if (replyToEmail) emailPayload.reply_to = replyToEmail;
