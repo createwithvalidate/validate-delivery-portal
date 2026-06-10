@@ -180,7 +180,8 @@ async function restoreSupabaseSession() {
   if (error || !data?.user) return false;
   const profile = await getCurrentProfile(data.user);
   applyAccountSession(data.user, profile);
-  state.portalLoading = true;
+  await loadPortalDataFromSupabase();
+  lastPortalFingerprint = portalFingerprint();
   saveState();
   return true;
 }
@@ -745,13 +746,10 @@ async function completeLogin() {
     if (session?.user) {
       const { user, profile } = session;
       applyAccountSession(user, profile);
-      state.portalLoading = true;
-      saveState();
-      render();
-      showToast(`Signed in as ${state.session.role}`);
       await loadPortalDataFromSupabase();
       lastPortalFingerprint = portalFingerprint();
       saveState();
+      showToast(`Signed in as ${state.session.role}`);
       render();
       startCrossDeviceSync();
       await openReviewFromHash({ showMissingMessage: true, reload: false });
@@ -1051,18 +1049,6 @@ function render() {
   if (!state.session) return;
 
   updateStats();
-  if (state.portalLoading) {
-    dashboardHero.hidden = true;
-    setPageHeader(state.mode === "admin" ? "Loading workspace" : "Loading review");
-    document.querySelector("#openCreate").hidden = true;
-    root.innerHTML = `
-      <div class="empty">
-        Loading saved workspace...
-      </div>
-    `;
-    return;
-  }
-
   if (state.mode === "client") {
     renderClientDashboard();
     return;
@@ -1934,30 +1920,13 @@ async function bootPortal() {
       stopCrossDeviceSync();
       saveState();
     }
+    if (restored) startCrossDeviceSync();
   } catch (error) {
     console.warn("Supabase startup load failed", error);
     showToast(error.message || "Could not load saved portal data");
   }
   render();
-  if (!restored) {
-    openReviewFromHash({ showMissingMessage: false });
-    return;
-  }
-
-  try {
-    await loadPortalDataFromSupabase();
-    lastPortalFingerprint = portalFingerprint();
-    saveState();
-    render();
-    startCrossDeviceSync();
-    openReviewFromHash({ showMissingMessage: false, reload: false });
-  } catch (error) {
-    state.portalLoading = false;
-    saveState();
-    render();
-    console.warn("Supabase startup data load failed", error);
-    showToast(error.message || "Could not load saved portal data");
-  }
+  openReviewFromHash({ showMissingMessage: false, reload: !restored });
 }
 
 bootPortal();
