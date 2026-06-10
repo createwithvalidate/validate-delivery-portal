@@ -122,7 +122,7 @@ async function signInWithSupabase(email, password) {
   if (!user) return null;
   return {
     user,
-    profile: await getCurrentProfile(user),
+    profile: fallbackProfileForUser(user),
   };
 }
 
@@ -159,6 +159,14 @@ async function getCurrentProfile(user) {
       role: user.email?.toLowerCase() === firstAdminEmail ? "admin" : "client",
     }
   );
+}
+
+function fallbackProfileForUser(user) {
+  return {
+    email: user.email,
+    full_name: user.user_metadata?.full_name || user.email,
+    role: user.email?.toLowerCase() === firstAdminEmail ? "admin" : "client",
+  };
 }
 
 function applyAccountSession(user, profile) {
@@ -209,18 +217,9 @@ async function restoreSupabaseSession() {
   const { data: sessionData, error: sessionError } = await client.auth.getSession();
   if (sessionError || !sessionData?.session?.user) return false;
 
-  let user = sessionData.session.user;
-  try {
-    const { data: userData } = await client.auth.getUser();
-    if (userData?.user) user = userData.user;
-  } catch (error) {
-    console.warn("Supabase user check fell back to saved session", error);
-  }
-
-  const profile = await getCurrentProfile(user);
-  applyAccountSession(user, profile);
-  await loadPortalDataFromSupabase();
-  lastPortalFingerprint = portalFingerprint();
+  const user = sessionData.session.user;
+  applyAccountSession(user, fallbackProfileForUser(user));
+  state.portalLoading = !state.clients.length && !state.projects.length && !state.videos.length;
   saveState();
   return true;
 }
@@ -321,6 +320,33 @@ async function loadPortalDataFromSupabase() {
   state.portalLoading = false;
   saveState();
   return true;
+}
+
+async function refreshPortalData({ openHash = false, showMissingMessage = false } = {}) {
+  try {
+    const client = getSupabase();
+    const { data: sessionData } = client ? await client.auth.getSession() : { data: {} };
+    const user = sessionData?.session?.user;
+    if (user) {
+      const profile = await getCurrentProfile(user);
+      applyAccountSession(user, profile);
+    }
+    await loadPortalDataFromSupabase();
+    lastPortalFingerprint = portalFingerprint();
+    saveState();
+    render();
+    if (openHash) {
+      await openReviewFromHash({ showMissingMessage, reload: false });
+    }
+    return true;
+  } catch (error) {
+    state.portalLoading = false;
+    saveState();
+    render();
+    console.warn("Supabase data refresh failed", error);
+    showToast(error.message || "Could not load saved portal data");
+    return false;
+  }
 }
 
 async function persistPortalDataToSupabase() {
@@ -785,13 +811,12 @@ async function completeLogin() {
     if (session?.user) {
       const { user, profile } = session;
       applyAccountSession(user, profile);
-      await loadPortalDataFromSupabase();
-      lastPortalFingerprint = portalFingerprint();
+      state.portalLoading = true;
       saveState();
       showToast(`Signed in as ${state.session.role}`);
       render();
       startCrossDeviceSync();
-      await openReviewFromHash({ showMissingMessage: true, reload: false });
+      refreshPortalData({ openHash: true, showMissingMessage: true });
       return;
     }
   } catch (error) {
@@ -1088,6 +1113,14 @@ function render() {
   if (!state.session) return;
 
   updateStats();
+  if (state.portalLoading) {
+    dashboardHero.hidden = true;
+    setPageHeader(state.mode === "admin" ? "Loading workspace" : "Loading review");
+    document.querySelector("#openCreate").hidden = true;
+    root.innerHTML = `<div class="empty">Loading saved workspace...</div>`;
+    return;
+  }
+
   if (state.mode === "client") {
     renderClientDashboard();
     return;
@@ -1956,7 +1989,11 @@ async function bootPortal() {
     showToast(error.message || "Could not load saved portal data");
   }
   render();
-  openReviewFromHash({ showMissingMessage: false, reload: !restored });
+  if (restored) {
+    refreshPortalData({ openHash: true, showMissingMessage: false });
+  } else {
+    openReviewFromHash({ showMissingMessage: false });
+  }
 }
 
 bootPortal();
