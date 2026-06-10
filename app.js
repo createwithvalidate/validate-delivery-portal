@@ -101,7 +101,15 @@ function saveState() {
 function getSupabase() {
   if (supabaseClient) return supabaseClient;
   if (!window.supabase?.createClient) return null;
-  supabaseClient = window.supabase.createClient(supabaseUrl, supabasePublishableKey);
+  supabaseClient = window.supabase.createClient(supabaseUrl, supabasePublishableKey, {
+    auth: {
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+      persistSession: true,
+      storage: window.localStorage,
+      storageKey: "validate-supabase-auth",
+    },
+  });
   return supabaseClient;
 }
 
