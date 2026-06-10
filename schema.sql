@@ -174,6 +174,7 @@ drop policy if exists "admins_manage_versions" on video_versions;
 drop policy if exists "clients_read_accessible_versions" on video_versions;
 drop policy if exists "clients_approve_accessible_versions" on video_versions;
 drop policy if exists "read_accessible_comments" on comments;
+drop policy if exists "admins_manage_comments" on comments;
 drop policy if exists "clients_insert_accessible_comments" on comments;
 drop policy if exists "admins_manage_project_access" on project_access;
 drop policy if exists "clients_read_own_project_access" on project_access;
@@ -291,6 +292,9 @@ create policy "read_accessible_comments" on comments
     )
   );
 
+create policy "admins_manage_comments" on comments
+  for all using (public.is_admin()) with check (public.is_admin());
+
 create policy "clients_insert_accessible_comments" on comments
   for insert with check (
     public.is_admin()
@@ -325,7 +329,16 @@ on conflict (code) do update set
   accepted_at = null;
 
 insert into profiles (id, email, full_name, role)
-select id, email, coalesce(raw_user_meta_data->>'full_name', 'Henry'), 'admin'
+select
+  id,
+  email,
+  coalesce(raw_user_meta_data->>'full_name', split_part(email, '@', 1)),
+  case when lower(email) = 'henry@createwithvalidate.com' then 'admin' else 'client' end
 from auth.users
-where lower(email) = 'henry@createwithvalidate.com'
-on conflict (id) do update set role = 'admin';
+on conflict (id) do update set
+  email = excluded.email,
+  full_name = coalesce(profiles.full_name, excluded.full_name),
+  role = case
+    when lower(excluded.email) = 'henry@createwithvalidate.com' then 'admin'
+    else profiles.role
+  end;

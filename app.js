@@ -58,20 +58,6 @@ const loginReelSources = [
   "https://createwithvalidate.com/videos/header-loop-2.mp4",
   "https://createwithvalidate.com/videos/fishing-loop.mp4",
 ];
-const testClientAccounts = [
-  {
-    email: "client@example.com",
-    password: "Client2026!",
-    client: {
-      id: "test-client-account",
-      name: "Test Client Account",
-      contact: "Jordan Lee",
-      email: "client@example.com",
-      summary: "Client review account. Projects appear here after admin sends a review link.",
-      archived: false,
-    },
-  },
-];
 let supabaseClient = null;
 
 function apiUrl(path) {
@@ -156,6 +142,39 @@ async function getCurrentProfile(user) {
       role: user.email?.toLowerCase() === firstAdminEmail ? "admin" : "client",
     }
   );
+}
+
+function applyAccountSession(user, profile) {
+  const role = profile?.role === "admin" ? "admin" : "client";
+  state.session = {
+    role,
+    email: user.email,
+  };
+  state.mode = role;
+  state.clientAccount =
+    role === "client"
+      ? {
+          id: `account-${user.id}`,
+          name: profile?.full_name || user.user_metadata?.full_name || "Client Account",
+          contact: profile?.full_name || user.email,
+          email: user.email,
+          summary: "Projects appear here after Validate sends a review.",
+          archived: false,
+        }
+      : null;
+  route = "clients";
+}
+
+async function restoreSupabaseSession() {
+  const client = getSupabase();
+  if (!client) return false;
+  const { data, error } = await client.auth.getUser();
+  if (error || !data?.user) return false;
+  const profile = await getCurrentProfile(data.user);
+  applyAccountSession(data.user, profile);
+  await loadPortalDataFromSupabase();
+  saveState();
+  return true;
 }
 
 function mapClientRow(row) {
@@ -277,13 +296,20 @@ async function loadPortalDataFromSupabase() {
 
 async function persistPortalDataToSupabase() {
   const client = getSupabase();
-  if (!client) return false;
+  if (!client) throw new Error("Supabase is not available yet.");
   const { data: userData } = await client.auth.getUser();
-  if (!userData?.user) return false;
+  if (!userData?.user) throw new Error("Sign in again before saving.");
+  if (state.session?.role !== "admin") {
+    throw new Error("Only admins can save clients, projects, and video setup.");
+  }
 
-  const operations = [];
+  const runSave = async (request, label) => {
+    const { error } = await request;
+    if (error) throw new Error(`${label} did not save: ${error.message}`);
+  };
+
   if (state.clients.length) {
-    operations.push(
+    await runSave(
       client.from("clients").upsert(
         state.clients.map((item) => ({
           id: item.id,
@@ -294,10 +320,11 @@ async function persistPortalDataToSupabase() {
           archived: Boolean(item.archived),
         })),
       ),
+      "Clients",
     );
   }
   if (state.projects.length) {
-    operations.push(
+    await runSave(
       client.from("projects").upsert(
         state.projects.map((item) => ({
           id: item.id,
@@ -308,10 +335,11 @@ async function persistPortalDataToSupabase() {
           archived: Boolean(item.archived),
         })),
       ),
+      "Projects",
     );
   }
   if (state.videos.length) {
-    operations.push(
+    await runSave(
       client.from("videos").upsert(
         state.videos.map((item) => ({
           id: item.id,
@@ -321,10 +349,11 @@ async function persistPortalDataToSupabase() {
           due: item.due || null,
         })),
       ),
+      "Videos",
     );
   }
   if (state.versions.length) {
-    operations.push(
+    await runSave(
       client.from("video_versions").upsert(
         state.versions.map((item) => ({
           id: item.id,
@@ -338,10 +367,11 @@ async function persistPortalDataToSupabase() {
           approved: Boolean(item.approved),
         })),
       ),
+      "Versions",
     );
   }
   if (state.comments.length) {
-    operations.push(
+    await runSave(
       client.from("comments").upsert(
         state.comments.map((item) => ({
           id: item.id,
@@ -352,6 +382,7 @@ async function persistPortalDataToSupabase() {
           created_at_label: item.createdAt || "Just now",
         })),
       ),
+      "Comments",
     );
   }
   if (state.deliveredProjectIds.length) {
@@ -363,48 +394,45 @@ async function persistPortalDataToSupabase() {
         return { project_id: projectId, email: clientRecord.email };
       })
       .filter(Boolean);
-    if (accessRows.length) operations.push(client.from("project_access").upsert(accessRows));
+    if (accessRows.length) {
+      await runSave(client.from("project_access").upsert(accessRows), "Project access");
+    }
   }
 
-  const results = await Promise.all(operations);
-  const error = results.find((result) => result.error)?.error;
-  if (error) throw error;
   return true;
+}
+
+async function insertCommentInSupabase(comment) {
+  const client = getSupabase();
+  if (!client) throw new Error("Supabase is not available yet.");
+  const { data: userData } = await client.auth.getUser();
+  if (!userData?.user) throw new Error("Sign in again before saving.");
+  const { error } = await client.from("comments").insert({
+    id: comment.id,
+    version_id: comment.versionId,
+    author: comment.author,
+    role: comment.role,
+    body: comment.body,
+    created_at_label: comment.createdAt || "Just now",
+  });
+  if (error) throw new Error(`Comment did not save: ${error.message}`);
+}
+
+async function saveApprovalInSupabase(version) {
+  const client = getSupabase();
+  if (!client) throw new Error("Supabase is not available yet.");
+  const { data: userData } = await client.auth.getUser();
+  if (!userData?.user) throw new Error("Sign in again before saving.");
+  const { error } = await client
+    .from("video_versions")
+    .update({ approved: Boolean(version.approved) })
+    .eq("id", version.id);
+  if (error) throw new Error(`Approval did not save: ${error.message}`);
 }
 
 async function savePortalData() {
   saveState();
-  try {
-    await persistPortalDataToSupabase();
-  } catch (error) {
-    console.warn("Supabase save failed", error);
-    showToast("Saved locally. Supabase did not save yet.");
-  }
-}
-
-function cleanupOldTestClientData() {
-  const testClientIds = state.clients.filter((client) => client.id?.startsWith("test-")).map((client) => client.id);
-  const testProjectIds = state.projects
-    .filter((project) => project.id?.startsWith("test-") || testClientIds.includes(project.clientId))
-    .map((project) => project.id);
-  const testVideoIds = state.videos
-    .filter((video) => video.id?.startsWith("test-") || testProjectIds.includes(video.projectId))
-    .map((video) => video.id);
-  const testVersionIds = state.versions
-    .filter((version) => version.id?.startsWith("test-") || testVideoIds.includes(version.videoId))
-    .map((version) => version.id);
-
-  if (!testClientIds.length && !testProjectIds.length && !testVideoIds.length && !testVersionIds.length) return;
-
-  state.clients = state.clients.filter((client) => !testClientIds.includes(client.id));
-  state.projects = state.projects.filter((project) => !testProjectIds.includes(project.id));
-  state.videos = state.videos.filter((video) => !testVideoIds.includes(video.id));
-  state.versions = state.versions.filter((version) => !testVersionIds.includes(version.id));
-  state.comments = state.comments.filter((comment) => !testVersionIds.includes(comment.versionId));
-  state.deliveredProjectIds = state.deliveredProjectIds.filter((projectId) => !testProjectIds.includes(projectId));
-  if (testClientIds.includes(state.selectedClientId)) state.selectedClientId = "";
-  if (testProjectIds.includes(state.selectedProjectId)) state.selectedProjectId = "";
-  if (testVideoIds.includes(state.selectedVideoId)) state.selectedVideoId = "";
+  await persistPortalDataToSupabase();
 }
 
 function setPageHeader(title, eyebrow = "Client delivery portal", style = "") {
@@ -518,32 +546,11 @@ function upsertById(collection, item) {
   else collection.unshift({ ...item });
 }
 
-function findTestClientAccount(email, password) {
-  const normalizedEmail = String(email || "").trim().toLowerCase();
-  const normalizedPassword = String(password || "").trim();
-  return testClientAccounts.find(
-    (account) =>
-      account.email.toLowerCase() === normalizedEmail &&
-      account.password === normalizedPassword,
-  );
-}
-
-function prepareClientAccount(account) {
-  const matchingClient = state.clients.find(
-    (client) => client.email?.toLowerCase() === account.email.toLowerCase(),
-  );
-  state.clientAccount = { ...account.client };
-  state.selectedClientId = matchingClient?.id || "";
-  state.selectedProjectId = "";
-  state.selectedVideoId = "";
-}
-
 function activeClientAccount() {
   if (state.mode !== "client") return activeClient();
   return (
     state.clients.find((client) => client.email?.toLowerCase() === state.session?.email?.toLowerCase()) ||
-    state.clientAccount ||
-    testClientAccounts.find((account) => account.email.toLowerCase() === state.session?.email?.toLowerCase())?.client
+    state.clientAccount
   );
 }
 
@@ -642,63 +649,18 @@ async function completeLogin() {
     const session = await signInWithSupabase(email, password);
     if (session?.user) {
       const { user, profile } = session;
-      const role = profile?.role === "admin" ? "admin" : "client";
-      state.session = {
-        role,
-        email: user.email,
-      };
-      state.mode = role;
-      state.clientAccount =
-        role === "client"
-          ? {
-              id: `account-${user.id}`,
-              name: profile?.full_name || user.user_metadata?.full_name || "Client Account",
-              contact: profile?.full_name || user.email,
-              email: user.email,
-              summary: "Projects appear here after Validate sends a review.",
-              archived: false,
-            }
-          : null;
-      route = "clients";
+      applyAccountSession(user, profile);
       await loadPortalDataFromSupabase();
       saveState();
-      showToast(`Signed in as ${role}`);
+      showToast(`Signed in as ${state.session.role}`);
       render();
       await openReviewFromHash({ showMissingMessage: true });
       return;
     }
   } catch (error) {
-    const account = findTestClientAccount(email, password);
-    if (account && loginRole === "client") {
-      prepareClientAccount(account);
-      state.session = {
-        role: "client",
-        email: account.email,
-      };
-      state.mode = "client";
-      route = "clients";
-      await savePortalData();
-      showToast(`Signed in as ${account.client.contact}`);
-      render();
-      return;
-    }
-    if (email !== firstAdminEmail) {
-      showToast(error.message || "Email or password did not match");
-      return;
-    }
+    showToast(error.message || "Email or password did not match");
+    return;
   }
-
-  const role = "admin";
-  state.session = {
-    role,
-    email: email || firstAdminEmail,
-  };
-  state.mode = role;
-  route = "clients";
-  await savePortalData();
-  showToast(`Signed in as ${role}`);
-  render();
-  await openReviewFromHash({ showMissingMessage: true });
 }
 
 window.validatePortalLogin = completeLogin;
@@ -846,9 +808,13 @@ async function sendLatestToClient(button) {
   const reviewUrl = `${location.origin}${location.pathname}#review/${project.id}`;
   const originalText = button.textContent;
   button.disabled = true;
-  button.textContent = "Sending...";
+  button.textContent = "Saving access...";
 
   try {
+    if (!state.deliveredProjectIds.includes(project.id)) state.deliveredProjectIds.push(project.id);
+    await savePortalData();
+
+    button.textContent = "Sending...";
     const response = await fetch(apiUrl("/api/send-review-email"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -867,7 +833,6 @@ async function sendLatestToClient(button) {
     const result = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(result.error || "Email could not be sent");
 
-    if (!state.deliveredProjectIds.includes(project.id)) state.deliveredProjectIds.push(project.id);
     state.activity.unshift(`Sent ${version.label} for ${video.title} to ${client.email}`);
     await savePortalData();
     showToast("Client email sent");
@@ -1099,10 +1064,19 @@ function renderProjects() {
   root.querySelectorAll("[data-archive-project]").forEach((button) => {
     button.addEventListener("click", async () => {
       const project = state.projects.find((item) => item.id === button.dataset.archiveProject);
+      if (!project) return;
+      const wasArchived = project.archived;
       project.archived = true;
-      await savePortalData();
-      showToast("Project archived");
-      renderProjects();
+      try {
+        await savePortalData();
+        showToast("Project archived");
+        renderProjects();
+      } catch (error) {
+        project.archived = wasArchived;
+        saveState();
+        showToast(error.message);
+        renderProjects();
+      }
     });
   });
 }
@@ -1394,25 +1368,51 @@ function renderReviewShell(isAdmin) {
     event.preventDefault();
     const body = new FormData(event.currentTarget).get("body").trim();
     if (!body || !version) return;
-    state.comments.unshift({
+    const comment = {
       id: `comment-${Date.now()}`,
       versionId: version.id,
       author: isAdmin ? "Validate" : "Client",
       role: isAdmin ? "admin" : "client",
       body,
       createdAt: "Just now",
-    });
-    await savePortalData();
-    renderReviewShell(isAdmin);
+    };
+    state.comments.unshift(comment);
+    try {
+      if (isAdmin) await savePortalData();
+      else {
+        saveState();
+        await insertCommentInSupabase(comment);
+      }
+      renderReviewShell(isAdmin);
+    } catch (error) {
+      state.comments = state.comments.filter((item) => item.id !== comment.id);
+      saveState();
+      showToast(error.message);
+      renderReviewShell(isAdmin);
+    }
   });
 
   root.querySelector("#approveVersion").addEventListener("click", async () => {
     if (!version) return;
+    const wasApproved = version.approved;
+    const previousStatus = video.status;
     version.approved = true;
     video.status = "approved";
-    await savePortalData();
-    showToast("Version marked approved");
-    renderReviewShell(isAdmin);
+    try {
+      if (isAdmin) await savePortalData();
+      else {
+        saveState();
+        await saveApprovalInSupabase(version);
+      }
+      showToast("Version marked approved");
+      renderReviewShell(isAdmin);
+    } catch (error) {
+      version.approved = wasApproved;
+      video.status = previousStatus;
+      saveState();
+      showToast(error.message);
+      renderReviewShell(isAdmin);
+    }
   });
 
   const back = root.querySelector("#backProject");
@@ -1531,6 +1531,17 @@ createForm.addEventListener("submit", async (event) => {
   const nowId = Date.now();
   const saveButton = createForm.querySelector('button[type="submit"]');
   const originalSaveText = saveButton.textContent;
+  const previousData = {
+    clients: structuredClone(state.clients),
+    projects: structuredClone(state.projects),
+    videos: structuredClone(state.videos),
+    versions: structuredClone(state.versions),
+    comments: structuredClone(state.comments),
+    deliveredProjectIds: structuredClone(state.deliveredProjectIds),
+    selectedClientId: state.selectedClientId,
+    selectedProjectId: state.selectedProjectId,
+    selectedVideoId: state.selectedVideoId,
+  };
   saveButton.disabled = true;
 
   try {
@@ -1627,7 +1638,18 @@ createForm.addEventListener("submit", async (event) => {
     else if (createIntent === "version") renderReviewShell(state.mode === "admin");
     else renderClients();
   } catch (error) {
+    state.clients = previousData.clients;
+    state.projects = previousData.projects;
+    state.videos = previousData.videos;
+    state.versions = previousData.versions;
+    state.comments = previousData.comments;
+    state.deliveredProjectIds = previousData.deliveredProjectIds;
+    state.selectedClientId = previousData.selectedClientId;
+    state.selectedProjectId = previousData.selectedProjectId;
+    state.selectedVideoId = previousData.selectedVideoId;
+    saveState();
     showToast(error.message);
+    render();
   } finally {
     saveButton.disabled = false;
     saveButton.textContent = originalSaveText;
@@ -1653,7 +1675,12 @@ authModeToggle?.addEventListener("click", () => {
 document.querySelector("#openCreate").addEventListener("click", () => openDialog());
 document.querySelector("#closeDialog").addEventListener("click", () => dialog.close());
 document.querySelector("#cancelDialog").addEventListener("click", () => dialog.close());
-document.querySelector("#signOut").addEventListener("click", () => {
+document.querySelector("#signOut").addEventListener("click", async () => {
+  try {
+    await getSupabase()?.auth.signOut();
+  } catch (error) {
+    console.warn("Supabase sign out failed", error);
+  }
   state.session = null;
   state.mode = "admin";
   state.clientAccount = null;
@@ -1674,12 +1701,17 @@ document.querySelector("#copyClientLink").addEventListener("click", async () => 
 
 async function bootPortal() {
   setLoginRole("client");
-  if (state.session) {
-    try {
-      await loadPortalDataFromSupabase();
-    } catch (error) {
-      console.warn("Supabase startup load failed", error);
+  try {
+    const restored = await restoreSupabaseSession();
+    if (!restored && state.session) {
+      state.session = null;
+      state.mode = "admin";
+      state.clientAccount = null;
+      saveState();
     }
+  } catch (error) {
+    console.warn("Supabase startup load failed", error);
+    showToast(error.message || "Could not load saved portal data");
   }
   render();
   openReviewFromHash({ showMissingMessage: false });

@@ -17,7 +17,7 @@ A first-pass client delivery portal for Validate video review, comments, approva
 - Bunny Stream upload handshake for browser video uploads
 - Static Vercel deployment config
 
-The prototype still has a browser `localStorage` fallback, but the beta account foundation is wired for Supabase Auth and the tables in `schema.sql`.
+Portal accounts and delivery data are stored in Supabase once `schema.sql` has been run. Browser storage is only used to remember UI state between refreshes.
 
 ## Local preview
 
@@ -135,12 +135,10 @@ The login screen now supports:
 - Create account from invite
 - Admin/client mode toggle
 
-The local UI still keeps a fallback state while we finish the full table-by-table data sync.
-
 Important beta note:
 
-- If `schema.sql` has not been run yet, the portal still saves to browser storage only.
-- After `schema.sql` is run and an admin signs in with Supabase, admin-created clients/projects/videos/versions sync to Supabase.
+- If `schema.sql` has not been run yet, real account/data persistence will fail loudly instead of silently saving only in the browser.
+- After `schema.sql` is run and users sign in with Supabase, admin-created clients/projects/videos/versions and client comments/approvals sync to Supabase.
 - Project names can repeat safely because new records now get unique IDs.
 
 The next production pass should finish:
