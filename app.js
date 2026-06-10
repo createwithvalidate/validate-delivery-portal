@@ -1,6 +1,7 @@
 const seedData = {
   mode: "admin",
   session: null,
+  clientAccount: null,
   selectedClientId: "",
   selectedProjectId: "",
   selectedVideoId: "",
@@ -17,7 +18,9 @@ const storeKey = "validate-delivery-portal-empty-v4";
 const productionOrigin = "https://validate-delivery-portal.vercel.app";
 const state = loadState();
 state.session ??= null;
+state.clientAccount ??= null;
 state.deliveredProjectIds ??= [];
+cleanupOldTestClientData();
 const root = document.querySelector("#viewRoot");
 const pageTitle = document.querySelector("#pageTitle");
 const pageEyebrow = document.querySelector(".topbar .eyebrow");
@@ -91,6 +94,31 @@ function saveState() {
   } catch {
     showToast("Browser storage is unavailable");
   }
+}
+
+function cleanupOldTestClientData() {
+  const testClientIds = state.clients.filter((client) => client.id?.startsWith("test-")).map((client) => client.id);
+  const testProjectIds = state.projects
+    .filter((project) => project.id?.startsWith("test-") || testClientIds.includes(project.clientId))
+    .map((project) => project.id);
+  const testVideoIds = state.videos
+    .filter((video) => video.id?.startsWith("test-") || testProjectIds.includes(video.projectId))
+    .map((video) => video.id);
+  const testVersionIds = state.versions
+    .filter((version) => version.id?.startsWith("test-") || testVideoIds.includes(version.videoId))
+    .map((version) => version.id);
+
+  if (!testClientIds.length && !testProjectIds.length && !testVideoIds.length && !testVersionIds.length) return;
+
+  state.clients = state.clients.filter((client) => !testClientIds.includes(client.id));
+  state.projects = state.projects.filter((project) => !testProjectIds.includes(project.id));
+  state.videos = state.videos.filter((video) => !testVideoIds.includes(video.id));
+  state.versions = state.versions.filter((version) => !testVersionIds.includes(version.id));
+  state.comments = state.comments.filter((comment) => !testVersionIds.includes(comment.versionId));
+  state.deliveredProjectIds = state.deliveredProjectIds.filter((projectId) => !testProjectIds.includes(projectId));
+  if (testClientIds.includes(state.selectedClientId)) state.selectedClientId = "";
+  if (testProjectIds.includes(state.selectedProjectId)) state.selectedProjectId = "";
+  if (testVideoIds.includes(state.selectedVideoId)) state.selectedVideoId = "";
 }
 
 function setPageHeader(title, eyebrow = "Client delivery portal", style = "") {
@@ -218,11 +246,19 @@ function prepareClientAccount(account) {
   const matchingClient = state.clients.find(
     (client) => client.email?.toLowerCase() === account.email.toLowerCase(),
   );
-  const client = matchingClient || account.client;
-  if (!matchingClient) upsertById(state.clients, client);
-  state.selectedClientId = client.id;
+  state.clientAccount = { ...account.client };
+  state.selectedClientId = matchingClient?.id || "";
   state.selectedProjectId = "";
   state.selectedVideoId = "";
+}
+
+function activeClientAccount() {
+  if (state.mode !== "client") return activeClient();
+  return (
+    state.clients.find((client) => client.email?.toLowerCase() === state.session?.email?.toLowerCase()) ||
+    state.clientAccount ||
+    testClientAccounts.find((account) => account.email.toLowerCase() === state.session?.email?.toLowerCase())?.client
+  );
 }
 
 function setRoute(nextRoute) {
@@ -573,12 +609,7 @@ function renderProjects() {
   setPageHeader(client.name, client.contact || "Projects", "client");
   document.querySelector("#openCreate").textContent = "New project";
   createIntent = "project";
-  const projects = state.projects.filter(
-    (project) =>
-      project.clientId === client.id &&
-      !project.archived &&
-      state.deliveredProjectIds.includes(project.id),
-  );
+  const projects = state.projects.filter((project) => project.clientId === client.id && !project.archived);
 
   root.innerHTML = `
     <section class="workspace-panel">
@@ -735,7 +766,7 @@ function renderAdminReview() {
 
 function renderClientDashboard() {
   dashboardHero.hidden = true;
-  const client = activeClient();
+  const client = activeClientAccount();
   if (!client) {
     setPageHeader("Client dashboard");
     document.querySelector("#openCreate").hidden = true;
@@ -743,7 +774,12 @@ function renderClientDashboard() {
     return;
   }
 
-  const projects = state.projects.filter((project) => project.clientId === client.id && !project.archived);
+  const projects = state.projects.filter(
+    (project) =>
+      project.clientId === client.id &&
+      !project.archived &&
+      state.deliveredProjectIds.includes(project.id),
+  );
   setPageHeader(client.name, client.contact || "Client dashboard", "client");
   document.querySelector("#openCreate").hidden = true;
   createIntent = "client";
@@ -1188,6 +1224,7 @@ document.querySelector("#cancelDialog").addEventListener("click", () => dialog.c
 document.querySelector("#signOut").addEventListener("click", () => {
   state.session = null;
   state.mode = "admin";
+  state.clientAccount = null;
   saveState();
   loginForm.reset();
   render();
