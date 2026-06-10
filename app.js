@@ -60,6 +60,7 @@ let isSyncing = false;
 let syncPaused = false;
 let isSavingCreateForm = false;
 let lastPortalFingerprint = "";
+let authListenerReady = false;
 const loginBackgroundCount = 9;
 const dashboardBackgroundCount = 5;
 const loginReelSources = [
@@ -173,13 +174,43 @@ function applyAccountSession(user, profile) {
   route = "clients";
 }
 
+function clearAccountSession() {
+  state.session = null;
+  state.mode = "admin";
+  state.clientAccount = null;
+  state.portalLoading = false;
+  stopCrossDeviceSync();
+  saveState();
+}
+
+function watchSupabaseAuth() {
+  const client = getSupabase();
+  if (!client || authListenerReady) return;
+  authListenerReady = true;
+  client.auth.onAuthStateChange((event) => {
+    if (event === "SIGNED_OUT") {
+      clearAccountSession();
+      render();
+    }
+  });
+}
+
 async function restoreSupabaseSession() {
   const client = getSupabase();
   if (!client) return false;
-  const { data, error } = await client.auth.getUser();
-  if (error || !data?.user) return false;
-  const profile = await getCurrentProfile(data.user);
-  applyAccountSession(data.user, profile);
+  const { data: sessionData, error: sessionError } = await client.auth.getSession();
+  if (sessionError || !sessionData?.session?.user) return false;
+
+  let user = sessionData.session.user;
+  try {
+    const { data: userData } = await client.auth.getUser();
+    if (userData?.user) user = userData.user;
+  } catch (error) {
+    console.warn("Supabase user check fell back to saved session", error);
+  }
+
+  const profile = await getCurrentProfile(user);
+  applyAccountSession(user, profile);
   await loadPortalDataFromSupabase();
   lastPortalFingerprint = portalFingerprint();
   saveState();
@@ -1887,12 +1918,7 @@ document.querySelector("#signOut").addEventListener("click", async () => {
   } catch (error) {
     console.warn("Supabase sign out failed", error);
   }
-  state.session = null;
-  state.mode = "admin";
-  state.clientAccount = null;
-  state.portalLoading = false;
-  stopCrossDeviceSync();
-  saveState();
+  clearAccountSession();
   loginForm.reset();
   render();
 });
@@ -1909,16 +1935,12 @@ document.querySelector("#copyClientLink").addEventListener("click", async () => 
 
 async function bootPortal() {
   setLoginRole("client");
+  watchSupabaseAuth();
   let restored = false;
   try {
     restored = await restoreSupabaseSession();
     if (!restored && state.session) {
-      state.session = null;
-      state.mode = "admin";
-      state.clientAccount = null;
-      state.portalLoading = false;
-      stopCrossDeviceSync();
-      saveState();
+      clearAccountSession();
     }
     if (restored) startCrossDeviceSync();
   } catch (error) {
