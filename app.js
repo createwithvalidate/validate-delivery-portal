@@ -454,7 +454,7 @@ function renderProjects() {
     return;
   }
 
-  setPageHeader(client.contact || client.name, "Projects", "client");
+  setPageHeader(client.name, client.contact || "Projects", "client");
   document.querySelector("#openCreate").textContent = "New project";
   createIntent = "project";
   const projects = state.projects.filter((project) => project.clientId === client.id && !project.archived);
