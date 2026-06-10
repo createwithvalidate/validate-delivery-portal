@@ -1178,7 +1178,7 @@ function setHeroMode(mode, projects = []) {
   heroEyebrow.textContent = isClient ? "Client review" : "Delivery control";
   heroHeadline.textContent = isClient ? "Projects ready for review." : "Everything in motion.";
   heroSubcopy.textContent = isClient
-    ? "Open a project, review the latest version, and keep every note in one place."
+    ? "Open a project, review the latest version, and keep every comment in one place."
     : "Manage clients, project invites, video versions, and approvals without the noise.";
   document.querySelector("#heroClientCount").textContent = isClient
     ? `${projects.length} projects`
