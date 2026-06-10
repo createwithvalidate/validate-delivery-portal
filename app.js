@@ -55,6 +55,7 @@ let backgroundRotation = null;
 let dashboardBackgroundRotation = null;
 let syncInterval = null;
 let isSyncing = false;
+let syncPaused = false;
 const loginBackgroundCount = 9;
 const dashboardBackgroundCount = 5;
 const loginReelSources = [
@@ -420,7 +421,7 @@ async function savePortalData() {
 }
 
 async function syncPortalData({ announce = false, rerender = true } = {}) {
-  if (!state.session || isSyncing) return false;
+  if (!state.session || isSyncing || syncPaused) return false;
   isSyncing = true;
   const previousSelection = {
     selectedClientId: state.selectedClientId,
@@ -463,6 +464,12 @@ function startCrossDeviceSync() {
 function stopCrossDeviceSync() {
   window.clearInterval(syncInterval);
   syncInterval = null;
+}
+
+async function saveAndReloadPortalData() {
+  await savePortalData();
+  await loadPortalDataFromSupabase();
+  saveState();
 }
 
 function setPageHeader(title, eyebrow = "Client delivery portal", style = "") {
@@ -1603,6 +1610,7 @@ createForm.addEventListener("submit", async (event) => {
     selectedVideoId: state.selectedVideoId,
   };
   saveButton.disabled = true;
+  syncPaused = true;
 
   try {
     if (createIntent === "client") {
@@ -1644,7 +1652,9 @@ createForm.addEventListener("submit", async (event) => {
 
     if (createIntent === "version") {
       const project = activeProject();
-      let video = activeVideo();
+      let video =
+        state.videos.find((item) => item.id === state.selectedVideoId && item.projectId === project?.id) ||
+        state.videos.find((item) => item.projectId === project?.id);
       if (!video) {
         if (!project) throw new Error("Open a project before uploading");
         const title = project.name || "New Video";
@@ -1689,7 +1699,8 @@ createForm.addEventListener("submit", async (event) => {
       });
     }
 
-    await savePortalData();
+    saveButton.textContent = "Saving version...";
+    await saveAndReloadPortalData();
     dialog.close();
     createForm.reset();
     showToast(createIntent === "version" ? "Version uploaded" : "Saved");
@@ -1711,6 +1722,7 @@ createForm.addEventListener("submit", async (event) => {
     showToast(error.message);
     render();
   } finally {
+    syncPaused = false;
     saveButton.disabled = false;
     saveButton.textContent = originalSaveText;
   }
