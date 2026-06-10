@@ -50,7 +50,7 @@ const loginReelSources = [
 const testClientAccounts = [
   {
     email: "megan.carter@example.com",
-    accessCode: "SDC-2026",
+    password: "Megan2026!",
     client: {
       id: "test-silver-dollar-city",
       name: "Silver Dollar City",
@@ -98,7 +98,7 @@ const testClientAccounts = [
   },
   {
     email: "elliot.reeves@example.com",
-    accessCode: "CEDAR-2026",
+    password: "Elliot2026!",
     client: {
       id: "test-big-cedar-lodge",
       name: "Big Cedar Lodge",
@@ -146,7 +146,7 @@ const testClientAccounts = [
   },
   {
     email: "nora.james@example.com",
-    accessCode: "HFE-2026",
+    password: "Nora2026!",
     client: {
       id: "test-herschend-family-entertainment",
       name: "Herschend Family Entertainment",
@@ -194,7 +194,7 @@ const testClientAccounts = [
   },
   {
     email: "caleb.brooks@example.com",
-    accessCode: "TANEY-2026",
+    password: "Caleb2026!",
     client: {
       id: "test-taneycomo-outfitters",
       name: "Taneycomo Outfitters",
@@ -373,13 +373,13 @@ function upsertById(collection, item) {
   else collection.unshift({ ...item });
 }
 
-function findTestClientAccount(email, accessCode) {
+function findTestClientAccount(email, password) {
   const normalizedEmail = String(email || "").trim().toLowerCase();
-  const normalizedCode = String(accessCode || "").trim().toUpperCase();
+  const normalizedPassword = String(password || "").trim();
   return testClientAccounts.find(
     (account) =>
-      account.email.toLowerCase() === normalizedEmail ||
-      account.accessCode.toUpperCase() === normalizedCode,
+      account.email.toLowerCase() === normalizedEmail &&
+      account.password === normalizedPassword,
   );
 }
 
@@ -406,11 +406,13 @@ function setLoginRole(nextRole) {
   loginRole = nextRole;
 
   const isAdmin = loginRole === "admin";
-  passwordField.hidden = !isAdmin;
+  passwordField.hidden = false;
   passwordField.querySelector("input").required = false;
-  accessCodeField.hidden = isAdmin;
-  accessCodeField.querySelector("input").required = false;
-  loginSubmit.textContent = isAdmin ? "Sign in as admin" : "Open review";
+  if (accessCodeField) {
+    accessCodeField.hidden = true;
+    accessCodeField.querySelector("input").required = false;
+  }
+  loginSubmit.textContent = isAdmin ? "Sign in as admin" : "Sign in";
   adminAccess.textContent = isAdmin ? "Back to client review" : "Admin access";
   document.querySelector(".login-panel .eyebrow").textContent = isAdmin
     ? "Admin delivery portal"
@@ -420,7 +422,7 @@ function setLoginRole(nextRole) {
     : "Review the latest cut.";
   document.querySelector(".login-copy").textContent = isAdmin
     ? "Manage clients, projects, video versions, notes, notifications, and approvals from one clean workspace."
-    : "Open your project, watch the current version, leave notes, and approve the final film when it is ready.";
+    : "Sign in to your review dashboard to see projects, versions, notes, and approvals.";
 }
 
 function completeLogin() {
@@ -428,9 +430,9 @@ function completeLogin() {
   const role = loginRole === "client" ? "client" : "admin";
 
   if (role === "client") {
-    const account = findTestClientAccount(form.get("email"), form.get("accessCode"));
+    const account = findTestClientAccount(form.get("email"), form.get("password"));
     if (!account) {
-      showToast("Use a test client email or access code");
+      showToast("Email or password did not match");
       return;
     }
 
@@ -661,7 +663,7 @@ function render() {
 
   updateStats();
   if (state.mode === "client") {
-    renderClientReview();
+    renderClientDashboard();
     return;
   }
 
@@ -894,6 +896,98 @@ function renderAdminReview() {
   renderReviewShell(true);
 }
 
+function renderClientDashboard() {
+  dashboardHero.hidden = true;
+  const client = activeClient();
+  if (!client) {
+    setPageHeader("Client dashboard");
+    document.querySelector("#openCreate").hidden = true;
+    root.innerHTML = `<div class="empty">No client account is loaded.</div>`;
+    return;
+  }
+
+  const projects = state.projects.filter((project) => project.clientId === client.id && !project.archived);
+  setPageHeader(client.name, client.contact || "Client dashboard", "client");
+  document.querySelector("#openCreate").hidden = true;
+  createIntent = "client";
+
+  root.innerHTML = `
+    <section class="workspace-panel">
+      <div class="workspace-head">
+        <div>
+          <h2>Your review dashboard</h2>
+          <p class="muted">Open a video to watch versions, leave notes, and approve the final cut when it is ready.</p>
+        </div>
+        <div class="workspace-stats">
+          <span>${projects.length} projects</span>
+          <span>${projects.reduce((total, project) => total + projectVersionCount(project.id), 0)} versions</span>
+        </div>
+      </div>
+      <div class="project-list">
+        ${
+          projects.length
+            ? projects
+                .map((project) => {
+                  const videos = projectVideos(project.id);
+                  return `
+                    <div class="client-project-block">
+                      <div class="client-project-head">
+                        <div>
+                          <p class="eyebrow">${project.status}</p>
+                          <h3>${project.name}</h3>
+                          <p class="muted">${project.description}</p>
+                        </div>
+                        <span class="metric">${videos.length} videos</span>
+                      </div>
+                      <div class="project-list">
+                        ${
+                          videos.length
+                            ? videos
+                                .map((video) => {
+                                  const version = latestVersion(video.id);
+                                  return `
+                                    <div class="list-row">
+                                      <div>
+                                        <h3>${video.title}</h3>
+                                        <p class="muted">${version?.label || "No versions yet"}${version?.note ? ` - ${version.note}` : ""}</p>
+                                        <div class="meta-strip">
+                                          <span>${videoVersions(video.id).length} versions</span>
+                                          <span>${version?.approved ? "approved" : "in review"}</span>
+                                        </div>
+                                      </div>
+                                      <div class="inline-actions">
+                                        <span class="status-pill ${version?.approved ? "approved" : ""}">${version?.approved ? "approved" : video.status}</span>
+                                        <button class="ghost-button" data-client-review="${video.id}">Open review</button>
+                                      </div>
+                                    </div>
+                                  `;
+                                })
+                                .join("")
+                            : `<div class="empty compact-empty">No videos are ready yet.</div>`
+                        }
+                      </div>
+                    </div>
+                  `;
+                })
+                .join("")
+            : `<div class="empty compact-empty">No projects are assigned to this account yet.</div>`
+        }
+      </div>
+    </section>
+  `;
+
+  root.querySelectorAll("[data-client-review]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.selectedVideoId = button.dataset.clientReview;
+      const video = activeVideo();
+      const project = state.projects.find((item) => item.id === video?.projectId);
+      if (project) state.selectedProjectId = project.id;
+      saveState();
+      renderClientReview();
+    });
+  });
+}
+
 function renderClientReview() {
   renderReviewShell(false);
 }
@@ -989,7 +1083,7 @@ function renderReviewShell(isAdmin) {
             : `<div class="empty compact-empty">No versions uploaded yet.</div>`
         }
         <button class="primary-button" id="approveVersion" ${version ? "" : "disabled"}>${version?.approved ? "Approved" : "Mark approved"}</button>
-        ${isAdmin ? `<button class="ghost-button" id="backProject">Back to project</button>` : ""}
+        ${isAdmin ? `<button class="ghost-button" id="backProject">Back to project</button>` : `<button class="ghost-button" id="backClientDashboard">Back to dashboard</button>`}
       </aside>
     </div>
   `;
@@ -1021,6 +1115,8 @@ function renderReviewShell(isAdmin) {
 
   const back = root.querySelector("#backProject");
   if (back) back.addEventListener("click", renderProjectDetail);
+  const backClientDashboard = root.querySelector("#backClientDashboard");
+  if (backClientDashboard) backClientDashboard.addEventListener("click", renderClientDashboard);
 }
 
 function renderActivity() {
