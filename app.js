@@ -224,6 +224,25 @@ async function loadPortalDataFromSupabase() {
     accessResult.error;
   if (error) throw error;
 
+  const hasRemoteRecords = [
+    clientsResult.data,
+    projectsResult.data,
+    videosResult.data,
+    versionsResult.data,
+    commentsResult.data,
+  ].some((items) => items?.length);
+  const hasLocalRecords =
+    state.clients.length ||
+    state.projects.length ||
+    state.videos.length ||
+    state.versions.length ||
+    state.comments.length;
+
+  if (!hasRemoteRecords && hasLocalRecords && state.session?.role === "admin") {
+    await persistPortalDataToSupabase();
+    return true;
+  }
+
   state.clients = (clientsResult.data || []).map(mapClientRow);
   state.projects = (projectsResult.data || []).map(mapProjectRow);
   state.videos = (videosResult.data || []).map(mapVideoRow);

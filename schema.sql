@@ -147,6 +147,23 @@ alter table video_versions enable row level security;
 alter table comments enable row level security;
 alter table project_access enable row level security;
 
+drop policy if exists "profiles_select_own_or_admin" on profiles;
+drop policy if exists "profiles_update_own_name" on profiles;
+drop policy if exists "admins_manage_invites" on invites;
+drop policy if exists "admins_manage_clients" on clients;
+drop policy if exists "clients_read_own_client" on clients;
+drop policy if exists "admins_manage_projects" on projects;
+drop policy if exists "clients_read_sent_projects" on projects;
+drop policy if exists "admins_manage_videos" on videos;
+drop policy if exists "clients_read_accessible_videos" on videos;
+drop policy if exists "admins_manage_versions" on video_versions;
+drop policy if exists "clients_read_accessible_versions" on video_versions;
+drop policy if exists "clients_approve_accessible_versions" on video_versions;
+drop policy if exists "read_accessible_comments" on comments;
+drop policy if exists "clients_insert_accessible_comments" on comments;
+drop policy if exists "admins_manage_project_access" on project_access;
+drop policy if exists "clients_read_own_project_access" on project_access;
+
 create or replace function public.is_admin()
 returns boolean
 language sql
