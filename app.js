@@ -665,6 +665,7 @@ async function completeLogin() {
       saveState();
       showToast(`Signed in as ${role}`);
       render();
+      await openReviewFromHash({ showMissingMessage: true });
       return;
     }
   } catch (error) {
@@ -698,6 +699,7 @@ async function completeLogin() {
   await savePortalData();
   showToast(`Signed in as ${role}`);
   render();
+  await openReviewFromHash({ showMissingMessage: true });
 }
 
 window.validatePortalLogin = completeLogin;
@@ -737,6 +739,53 @@ function videoVersions(videoId) {
 
 function projectVersionCount(projectId) {
   return projectVideos(projectId).reduce((total, video) => total + videoVersions(video.id).length, 0);
+}
+
+function reviewProjectIdFromHash() {
+  const match = location.hash.match(/^#review\/(.+)$/);
+  return match ? decodeURIComponent(match[1]) : "";
+}
+
+async function openReviewFromHash({ showMissingMessage = false } = {}) {
+  const projectId = reviewProjectIdFromHash();
+  if (!projectId || !state.session) return false;
+
+  try {
+    await loadPortalDataFromSupabase();
+  } catch (error) {
+    console.warn("Supabase review link load failed", error);
+  }
+
+  const project = state.projects.find((item) => item.id === projectId && !item.archived);
+  if (!project) {
+    if (showMissingMessage) showToast("Review is not available for this account yet");
+    render();
+    return false;
+  }
+
+  const video = projectVideos(project.id)[0];
+  state.selectedClientId = project.clientId;
+  state.selectedProjectId = project.id;
+  state.selectedVideoId = video?.id || "";
+  saveState();
+
+  if (state.mode === "client") {
+    if (!state.deliveredProjectIds.includes(project.id)) {
+      if (showMissingMessage) showToast("Review is not available for this account yet");
+      renderClientDashboard();
+      return false;
+    }
+    if (!video) {
+      if (showMissingMessage) showToast("No video is ready for this project yet");
+      renderClientDashboard();
+      return false;
+    }
+    renderClientReview();
+    return true;
+  }
+
+  renderProjectDetail();
+  return true;
 }
 
 async function deleteClient(clientId) {
@@ -1626,6 +1675,10 @@ document.querySelector("#copyClientLink").addEventListener("click", async () => 
 
 setLoginRole("client");
 render();
+openReviewFromHash({ showMissingMessage: false });
+window.addEventListener("hashchange", () => {
+  openReviewFromHash({ showMissingMessage: true });
+});
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden && !state.session) startLoginReel();
 });
