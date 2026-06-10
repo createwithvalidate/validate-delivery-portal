@@ -10,12 +10,14 @@ const seedData = {
   versions: [],
   comments: [],
   activity: [],
+  deliveredProjectIds: [],
 };
 
-const storeKey = "validate-delivery-portal-empty-v3";
+const storeKey = "validate-delivery-portal-empty-v4";
 const productionOrigin = "https://validate-delivery-portal.vercel.app";
 const state = loadState();
 state.session ??= null;
+state.deliveredProjectIds ??= [];
 const root = document.querySelector("#viewRoot");
 const pageTitle = document.querySelector("#pageTitle");
 const pageEyebrow = document.querySelector(".topbar .eyebrow");
@@ -49,187 +51,16 @@ const loginReelSources = [
 ];
 const testClientAccounts = [
   {
-    email: "megan.carter@example.com",
-    password: "Megan2026!",
+    email: "client@example.com",
+    password: "Client2026!",
     client: {
-      id: "test-silver-dollar-city",
-      name: "Silver Dollar City",
-      contact: "Megan Carter",
-      email: "megan.carter@example.com",
-      summary: "Theme park campaign review for the summer launch.",
+      id: "test-client-account",
+      name: "Test Client Account",
+      contact: "Jordan Lee",
+      email: "client@example.com",
+      summary: "Client review account. Projects appear here after admin sends a review link.",
       archived: false,
     },
-    project: {
-      id: "test-sdc-summer-campaign",
-      clientId: "test-silver-dollar-city",
-      name: "Summer Campaign",
-      status: "review",
-      description: "Main park spot and social cutdowns for final notes.",
-      archived: false,
-    },
-    video: {
-      id: "test-sdc-launch-film",
-      projectId: "test-sdc-summer-campaign",
-      title: "Launch Film",
-      status: "review",
-      due: "June 21",
-    },
-    version: {
-      id: "test-sdc-launch-v2",
-      videoId: "test-sdc-launch-film",
-      label: "Version 2",
-      provider: "Bunny Stream",
-      embedUrl: "",
-      bunnyVideoId: "",
-      note: "Updated pacing, new end card, and revised family shots.",
-      createdAt: "Yesterday",
-      approved: false,
-    },
-    comments: [
-      {
-        id: "test-sdc-note-1",
-        versionId: "test-sdc-launch-v2",
-        author: "Megan Carter",
-        role: "client",
-        body: "The intro feels much better. Can we hold the coaster shot a little longer?",
-        createdAt: "2 hours ago",
-      },
-    ],
-  },
-  {
-    email: "elliot.reeves@example.com",
-    password: "Elliot2026!",
-    client: {
-      id: "test-big-cedar-lodge",
-      name: "Big Cedar Lodge",
-      contact: "Elliot Reeves",
-      email: "elliot.reeves@example.com",
-      summary: "Resort brand film and outdoor lifestyle review.",
-      archived: false,
-    },
-    project: {
-      id: "test-cedar-brand-film",
-      clientId: "test-big-cedar-lodge",
-      name: "Lodge Brand Film",
-      status: "review",
-      description: "Hero brand film with thirty and fifteen second cutdowns.",
-      archived: false,
-    },
-    video: {
-      id: "test-cedar-hero-film",
-      projectId: "test-cedar-brand-film",
-      title: "Hero Film",
-      status: "review",
-      due: "June 28",
-    },
-    version: {
-      id: "test-cedar-hero-v1",
-      videoId: "test-cedar-hero-film",
-      label: "Version 1",
-      provider: "Bunny Stream",
-      embedUrl: "",
-      bunnyVideoId: "",
-      note: "Initial lodge story cut for stakeholder notes.",
-      createdAt: "Today",
-      approved: false,
-    },
-    comments: [
-      {
-        id: "test-cedar-note-1",
-        versionId: "test-cedar-hero-v1",
-        author: "Elliot Reeves",
-        role: "client",
-        body: "Love the lake sequence. Let's soften the copy on the final card.",
-        createdAt: "1 hour ago",
-      },
-    ],
-  },
-  {
-    email: "nora.james@example.com",
-    password: "Nora2026!",
-    client: {
-      id: "test-herschend-family-entertainment",
-      name: "Herschend Family Entertainment",
-      contact: "Nora James",
-      email: "nora.james@example.com",
-      summary: "Recruitment story and internal campaign review.",
-      archived: false,
-    },
-    project: {
-      id: "test-hfe-recruitment-story",
-      clientId: "test-herschend-family-entertainment",
-      name: "Recruitment Story",
-      status: "review",
-      description: "Employee story edit for hiring campaign review.",
-      archived: false,
-    },
-    video: {
-      id: "test-hfe-team-story",
-      projectId: "test-hfe-recruitment-story",
-      title: "Team Story",
-      status: "review",
-      due: "July 8",
-    },
-    version: {
-      id: "test-hfe-team-v2",
-      videoId: "test-hfe-team-story",
-      label: "Version 2",
-      provider: "Bunny Stream",
-      embedUrl: "",
-      bunnyVideoId: "",
-      note: "Trimmed intro and added new interview pull quote.",
-      createdAt: "Yesterday",
-      approved: false,
-    },
-    comments: [
-      {
-        id: "test-hfe-note-1",
-        versionId: "test-hfe-team-v2",
-        author: "Nora James",
-        role: "client",
-        body: "This is close. Please try the alternate ending with the group shot.",
-        createdAt: "Yesterday",
-      },
-    ],
-  },
-  {
-    email: "caleb.brooks@example.com",
-    password: "Caleb2026!",
-    client: {
-      id: "test-taneycomo-outfitters",
-      name: "Taneycomo Outfitters",
-      contact: "Caleb Brooks",
-      email: "caleb.brooks@example.com",
-      summary: "Fishing, lake lifestyle, and product-focused video review.",
-      archived: false,
-    },
-    project: {
-      id: "test-taneycomo-spring-launch",
-      clientId: "test-taneycomo-outfitters",
-      name: "Spring Fishing Launch",
-      status: "draft",
-      description: "Product and lifestyle launch film for spring inventory.",
-      archived: false,
-    },
-    video: {
-      id: "test-taneycomo-rod-launch",
-      projectId: "test-taneycomo-spring-launch",
-      title: "Rod Launch",
-      status: "draft",
-      due: "July 12",
-    },
-    version: {
-      id: "test-taneycomo-rod-v1",
-      videoId: "test-taneycomo-rod-launch",
-      label: "Version 1",
-      provider: "Bunny Stream",
-      embedUrl: "",
-      bunnyVideoId: "",
-      note: "First cut for launch sequence and product beauty shots.",
-      createdAt: "Today",
-      approved: false,
-    },
-    comments: [],
   },
 ];
 
@@ -384,14 +215,14 @@ function findTestClientAccount(email, password) {
 }
 
 function prepareClientAccount(account) {
-  upsertById(state.clients, account.client);
-  upsertById(state.projects, account.project);
-  upsertById(state.videos, account.video);
-  upsertById(state.versions, account.version);
-  account.comments.forEach((comment) => upsertById(state.comments, comment));
-  state.selectedClientId = account.client.id;
-  state.selectedProjectId = account.project.id;
-  state.selectedVideoId = account.video.id;
+  const matchingClient = state.clients.find(
+    (client) => client.email?.toLowerCase() === account.email.toLowerCase(),
+  );
+  const client = matchingClient || account.client;
+  if (!matchingClient) upsertById(state.clients, client);
+  state.selectedClientId = client.id;
+  state.selectedProjectId = "";
+  state.selectedVideoId = "";
 }
 
 function setRoute(nextRoute) {
@@ -571,6 +402,7 @@ async function sendLatestToClient(button) {
     const result = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(result.error || "Email could not be sent");
 
+    if (!state.deliveredProjectIds.includes(project.id)) state.deliveredProjectIds.push(project.id);
     state.activity.unshift(`Sent ${version.label} for ${video.title} to ${client.email}`);
     saveState();
     showToast("Client email sent");
@@ -741,7 +573,12 @@ function renderProjects() {
   setPageHeader(client.name, client.contact || "Projects", "client");
   document.querySelector("#openCreate").textContent = "New project";
   createIntent = "project";
-  const projects = state.projects.filter((project) => project.clientId === client.id && !project.archived);
+  const projects = state.projects.filter(
+    (project) =>
+      project.clientId === client.id &&
+      !project.archived &&
+      state.deliveredProjectIds.includes(project.id),
+  );
 
   root.innerHTML = `
     <section class="workspace-panel">
@@ -970,7 +807,7 @@ function renderClientDashboard() {
                   `;
                 })
                 .join("")
-            : `<div class="empty compact-empty">No projects are assigned to this account yet.</div>`
+            : `<div class="empty compact-empty">No projects have been sent to this account yet.</div>`
         }
       </div>
     </section>
