@@ -264,6 +264,30 @@ function projectVersionCount(projectId) {
   return projectVideos(projectId).reduce((total, video) => total + videoVersions(video.id).length, 0);
 }
 
+function deleteClient(clientId) {
+  const client = state.clients.find((item) => item.id === clientId);
+  if (!client) return;
+  const confirmed = window.confirm(`Delete ${client.name} and all of its projects?`);
+  if (!confirmed) return;
+
+  const projectIds = state.projects.filter((project) => project.clientId === clientId).map((project) => project.id);
+  const videoIds = state.videos.filter((video) => projectIds.includes(video.projectId)).map((video) => video.id);
+  const versionIds = state.versions.filter((version) => videoIds.includes(version.videoId)).map((version) => version.id);
+
+  state.clients = state.clients.filter((item) => item.id !== clientId);
+  state.projects = state.projects.filter((project) => !projectIds.includes(project.id));
+  state.videos = state.videos.filter((video) => !videoIds.includes(video.id));
+  state.versions = state.versions.filter((version) => !versionIds.includes(version.id));
+  state.comments = state.comments.filter((comment) => !versionIds.includes(comment.versionId));
+  if (state.selectedClientId === clientId) state.selectedClientId = "";
+  if (projectIds.includes(state.selectedProjectId)) state.selectedProjectId = "";
+  if (videoIds.includes(state.selectedVideoId)) state.selectedVideoId = "";
+  state.activity.unshift(`Deleted client ${client.name}`);
+  saveState();
+  showToast("Client deleted");
+  renderClients();
+}
+
 function updateStats() {
   document.querySelector("#heroClientCount").textContent = `${state.clients.length} clients`;
   document.querySelector("#heroProjectCount").textContent =
@@ -446,7 +470,10 @@ function renderClients() {
               </div>
               <div class="card-footer">
                 <span class="metric">${activeProjects.length} projects</span>
-                <button class="ghost-button" data-client="${client.id}">Open workspace</button>
+                <div class="inline-actions">
+                  <button class="ghost-button danger-button" data-delete-client="${client.id}">Delete</button>
+                  <button class="ghost-button" data-client="${client.id}">Open workspace</button>
+                </div>
               </div>
             </article>
           `;
@@ -461,6 +488,10 @@ function renderClients() {
       saveState();
       renderProjects();
     });
+  });
+
+  root.querySelectorAll("[data-delete-client]").forEach((button) => {
+    button.addEventListener("click", () => deleteClient(button.dataset.deleteClient));
   });
 }
 
