@@ -43,6 +43,7 @@ const dialog = document.querySelector("#createDialog");
 const dialogTitle = document.querySelector("#dialogTitle");
 const dialogFields = document.querySelector("#dialogFields");
 const createForm = document.querySelector("#createForm");
+const createSubmit = document.querySelector("#createSubmit");
 const toast = document.querySelector("#toast");
 
 let route = "clients";
@@ -56,6 +57,7 @@ let dashboardBackgroundRotation = null;
 let syncInterval = null;
 let isSyncing = false;
 let syncPaused = false;
+let isSavingCreateForm = false;
 const loginBackgroundCount = 9;
 const dashboardBackgroundCount = 5;
 const loginReelSources = [
@@ -1580,6 +1582,9 @@ function openDialog(intent = createIntent) {
     video: "Add video",
     version: "Upload new version",
   }[intent];
+  if (createSubmit) {
+    createSubmit.textContent = intent === "version" ? "Upload version" : "Save";
+  }
 
   dialogFields.innerHTML = fields[intent]
     .map(
@@ -1603,6 +1608,9 @@ function openDialog(intent = createIntent) {
 
 createForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  event.stopPropagation();
+  if (isSavingCreateForm) return;
+  isSavingCreateForm = true;
   const form = new FormData(createForm);
   const nowId = Date.now();
   const saveButton = createForm.querySelector('button[type="submit"]');
@@ -1619,6 +1627,7 @@ createForm.addEventListener("submit", async (event) => {
     selectedVideoId: state.selectedVideoId,
   };
   saveButton.disabled = true;
+  saveButton.textContent = createIntent === "version" ? "Starting upload..." : "Saving...";
   syncPaused = true;
 
   try {
@@ -1736,6 +1745,7 @@ createForm.addEventListener("submit", async (event) => {
     render();
   } finally {
     syncPaused = false;
+    isSavingCreateForm = false;
     saveButton.disabled = false;
     saveButton.textContent = originalSaveText;
   }
