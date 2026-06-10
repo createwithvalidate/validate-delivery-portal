@@ -39,6 +39,7 @@ const authModeToggle = document.querySelector("#authModeToggle");
 const accessCodeField = document.querySelector("#accessCodeField");
 const adminAccess = document.querySelector("#adminAccess");
 const sessionLabel = document.querySelector("#sessionLabel");
+const syncDataButton = document.querySelector("#syncData");
 const dialog = document.querySelector("#createDialog");
 const dialogTitle = document.querySelector("#dialogTitle");
 const dialogFields = document.querySelector("#dialogFields");
@@ -52,6 +53,8 @@ let authMode = "signin";
 let reelKeepalive = null;
 let backgroundRotation = null;
 let dashboardBackgroundRotation = null;
+let syncInterval = null;
+let isSyncing = false;
 const loginBackgroundCount = 9;
 const dashboardBackgroundCount = 5;
 const loginReelSources = [
@@ -265,25 +268,6 @@ async function loadPortalDataFromSupabase() {
     accessResult.error;
   if (error) throw error;
 
-  const hasRemoteRecords = [
-    clientsResult.data,
-    projectsResult.data,
-    videosResult.data,
-    versionsResult.data,
-    commentsResult.data,
-  ].some((items) => items?.length);
-  const hasLocalRecords =
-    state.clients.length ||
-    state.projects.length ||
-    state.videos.length ||
-    state.versions.length ||
-    state.comments.length;
-
-  if (!hasRemoteRecords && hasLocalRecords && state.session?.role === "admin") {
-    await persistPortalDataToSupabase();
-    return true;
-  }
-
   state.clients = (clientsResult.data || []).map(mapClientRow);
   state.projects = (projectsResult.data || []).map(mapProjectRow);
   state.videos = (videosResult.data || []).map(mapVideoRow);
@@ -435,6 +419,52 @@ async function savePortalData() {
   await persistPortalDataToSupabase();
 }
 
+async function syncPortalData({ announce = false, rerender = true } = {}) {
+  if (!state.session || isSyncing) return false;
+  isSyncing = true;
+  const previousSelection = {
+    selectedClientId: state.selectedClientId,
+    selectedProjectId: state.selectedProjectId,
+    selectedVideoId: state.selectedVideoId,
+  };
+
+  try {
+    await loadPortalDataFromSupabase();
+    state.selectedClientId = state.clients.some((client) => client.id === previousSelection.selectedClientId)
+      ? previousSelection.selectedClientId
+      : state.clients[0]?.id || "";
+    state.selectedProjectId = state.projects.some((project) => project.id === previousSelection.selectedProjectId)
+      ? previousSelection.selectedProjectId
+      : state.projects.find((project) => project.clientId === state.selectedClientId)?.id || "";
+    state.selectedVideoId = state.videos.some((video) => video.id === previousSelection.selectedVideoId)
+      ? previousSelection.selectedVideoId
+      : state.videos.find((video) => video.projectId === state.selectedProjectId)?.id || "";
+    saveState();
+    if (rerender) render();
+    if (announce) showToast("Synced");
+    return true;
+  } catch (error) {
+    console.warn("Supabase sync failed", error);
+    if (announce) showToast(error.message || "Sync failed");
+    return false;
+  } finally {
+    isSyncing = false;
+  }
+}
+
+function startCrossDeviceSync() {
+  window.clearInterval(syncInterval);
+  if (!state.session) return;
+  syncInterval = window.setInterval(() => {
+    if (!document.hidden) syncPortalData({ rerender: true });
+  }, 7000);
+}
+
+function stopCrossDeviceSync() {
+  window.clearInterval(syncInterval);
+  syncInterval = null;
+}
+
 function setPageHeader(title, eyebrow = "Client delivery portal", style = "") {
   pageTitle.textContent = title;
   pageEyebrow.textContent = eyebrow;
@@ -453,6 +483,7 @@ function updateAuthView() {
   startDashboardBackgroundRotation();
 
   sessionLabel.textContent = "";
+  if (syncDataButton) syncDataButton.hidden = !isLoggedIn;
   document.querySelector("#openCreate").hidden = state.session.role !== "admin" || state.mode === "client";
 }
 
@@ -654,6 +685,7 @@ async function completeLogin() {
       saveState();
       showToast(`Signed in as ${state.session.role}`);
       render();
+      startCrossDeviceSync();
       await openReviewFromHash({ showMissingMessage: true });
       return;
     }
@@ -1673,6 +1705,9 @@ authModeToggle?.addEventListener("click", () => {
 });
 
 document.querySelector("#openCreate").addEventListener("click", () => openDialog());
+syncDataButton?.addEventListener("click", () => {
+  syncPortalData({ announce: true, rerender: true });
+});
 document.querySelector("#closeDialog").addEventListener("click", () => dialog.close());
 document.querySelector("#cancelDialog").addEventListener("click", () => dialog.close());
 document.querySelector("#signOut").addEventListener("click", async () => {
@@ -1684,6 +1719,7 @@ document.querySelector("#signOut").addEventListener("click", async () => {
   state.session = null;
   state.mode = "admin";
   state.clientAccount = null;
+  stopCrossDeviceSync();
   saveState();
   loginForm.reset();
   render();
@@ -1707,8 +1743,10 @@ async function bootPortal() {
       state.session = null;
       state.mode = "admin";
       state.clientAccount = null;
+      stopCrossDeviceSync();
       saveState();
     }
+    if (restored) startCrossDeviceSync();
   } catch (error) {
     console.warn("Supabase startup load failed", error);
     showToast(error.message || "Could not load saved portal data");
@@ -1723,4 +1761,8 @@ window.addEventListener("hashchange", () => {
 });
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden && !state.session) startLoginReel();
+  if (!document.hidden && state.session) syncPortalData({ rerender: true });
+});
+window.addEventListener("focus", () => {
+  syncPortalData({ rerender: true });
 });
