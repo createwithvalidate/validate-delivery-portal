@@ -116,7 +116,12 @@ async function signInWithSupabase(email, password) {
   if (!client) return null;
   const { data, error } = await client.auth.signInWithPassword({ email, password });
   if (error) throw error;
-  return data?.user || null;
+  const user = data?.user || null;
+  if (!user) return null;
+  return {
+    user,
+    profile: await getCurrentProfile(user),
+  };
 }
 
 async function createInviteAccount({ email, password, fullName, inviteCode }) {
@@ -134,6 +139,24 @@ async function createInviteAccount({ email, password, fullName, inviteCode }) {
   });
   if (error) throw error;
   return data?.user || null;
+}
+
+async function getCurrentProfile(user) {
+  const client = getSupabase();
+  if (!client || !user) return null;
+  const { data, error } = await client
+    .from("profiles")
+    .select("email, full_name, role")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (error) throw error;
+  return (
+    data || {
+      email: user.email,
+      full_name: user.user_metadata?.full_name || user.email,
+      role: user.email?.toLowerCase() === firstAdminEmail ? "admin" : "client",
+    }
+  );
 }
 
 function mapClientRow(row) {
@@ -613,66 +636,30 @@ async function completeLogin() {
     return;
   }
 
-  const role = loginRole === "client" ? "client" : "admin";
   const email = String(form.get("email") || "").trim();
   const password = String(form.get("password") || "").trim();
 
-  if (role === "client") {
-    const account = findTestClientAccount(email, password);
-    try {
-      const user = await signInWithSupabase(email, password);
-      if (user) {
-        state.session = {
-          role,
-          email: user.email,
-        };
-        state.mode = role;
-        state.clientAccount = {
-          ...testClientAccounts[0].client,
-          email: user.email,
-          contact: user.user_metadata?.full_name || user.email,
-          name: user.user_metadata?.company_name || "Client Account",
-        };
-        route = "clients";
-        await loadPortalDataFromSupabase();
-        saveState();
-        showToast("Signed in");
-        render();
-        return;
-      }
-    } catch (error) {
-      if (!account) {
-        showToast(error.message || "Email or password did not match");
-        return;
-      }
-    }
-
-    if (!account) {
-      showToast("Email or password did not match");
-      return;
-    }
-
-    prepareClientAccount(account);
-    state.session = {
-      role,
-      email: account.email,
-    };
-    state.mode = role;
-    route = "clients";
-    await savePortalData();
-    showToast(`Signed in as ${account.client.contact}`);
-    render();
-    return;
-  }
-
   try {
-    const user = await signInWithSupabase(email, password);
-    if (user) {
+    const session = await signInWithSupabase(email, password);
+    if (session?.user) {
+      const { user, profile } = session;
+      const role = profile?.role === "admin" ? "admin" : "client";
       state.session = {
         role,
         email: user.email,
       };
       state.mode = role;
+      state.clientAccount =
+        role === "client"
+          ? {
+              id: `account-${user.id}`,
+              name: profile?.full_name || user.user_metadata?.full_name || "Client Account",
+              contact: profile?.full_name || user.email,
+              email: user.email,
+              summary: "Projects appear here after Validate sends a review.",
+              archived: false,
+            }
+          : null;
       route = "clients";
       await loadPortalDataFromSupabase();
       saveState();
@@ -681,12 +668,27 @@ async function completeLogin() {
       return;
     }
   } catch (error) {
-    if (email && email !== firstAdminEmail) {
-      showToast(error.message || "Admin sign-in failed");
+    const account = findTestClientAccount(email, password);
+    if (account && loginRole === "client") {
+      prepareClientAccount(account);
+      state.session = {
+        role: "client",
+        email: account.email,
+      };
+      state.mode = "client";
+      route = "clients";
+      await savePortalData();
+      showToast(`Signed in as ${account.client.contact}`);
+      render();
+      return;
+    }
+    if (email !== firstAdminEmail) {
+      showToast(error.message || "Email or password did not match");
       return;
     }
   }
 
+  const role = "admin";
   state.session = {
     role,
     email: email || firstAdminEmail,

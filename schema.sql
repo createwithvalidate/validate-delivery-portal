@@ -1,6 +1,7 @@
 -- Validate Delivery Portal beta schema
 -- Run this in Supabase SQL Editor.
--- Signup rule: invite-only clients. First admin email: henry@createwithvalidate.com
+-- Signup rule: invite-only accounts. Use invites.role = 'admin' for admin accounts
+-- and invites.role = 'client' for client accounts.
 
 create extension if not exists pgcrypto;
 
@@ -92,15 +93,24 @@ security definer
 set search_path = public
 as $$
 declare
+  invite_code text;
+  invite_id uuid;
   invited_role text;
 begin
-  select role into invited_role
+  invite_code := new.raw_user_meta_data->>'invite_code';
+
+  select id, role into invite_id, invited_role
   from invites
   where lower(email) = lower(new.email)
+    and code = invite_code
     and accepted_at is null
     and (expires_at is null or expires_at > now())
   order by created_at desc
   limit 1;
+
+  if lower(new.email) <> 'henry@createwithvalidate.com' and invite_id is null then
+    raise exception 'A valid invite is required to create an account.';
+  end if;
 
   insert into profiles (id, email, full_name, role)
   values (
@@ -121,8 +131,7 @@ begin
   update invites
   set accepted_by = new.id,
       accepted_at = now()
-  where lower(email) = lower(new.email)
-    and accepted_at is null;
+  where id = invite_id;
 
   update project_access
   set user_id = new.id
