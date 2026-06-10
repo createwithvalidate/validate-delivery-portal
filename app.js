@@ -286,6 +286,10 @@ async function loadPortalDataFromSupabase() {
   if (!client) return false;
   if (!state.session) return false;
 
+  if (state.session.role !== "admin") {
+    return loadClientPortalDataFromSupabase(client);
+  }
+
   const [
     clientsResult,
     projectsResult,
@@ -317,6 +321,70 @@ async function loadPortalDataFromSupabase() {
   state.versions = (versionsResult.data || []).map(mapVersionRow);
   state.comments = (commentsResult.data || []).map(mapCommentRow);
   state.deliveredProjectIds = [...new Set((accessResult.data || []).map((row) => row.project_id))];
+  state.portalLoading = false;
+  saveState();
+  return true;
+}
+
+async function loadClientPortalDataFromSupabase(client) {
+  const [clientsResult, accessResult] = await Promise.all([
+    client.from("clients").select("*").order("created_at", { ascending: false }),
+    client.from("project_access").select("project_id,email").order("granted_at", { ascending: false }),
+  ]);
+
+  if (clientsResult.error || accessResult.error) {
+    throw clientsResult.error || accessResult.error;
+  }
+
+  const projectIds = [...new Set((accessResult.data || []).map((row) => row.project_id).filter(Boolean))];
+
+  let projectsResult = { data: [], error: null };
+  let videosResult = { data: [], error: null };
+  let versionsResult = { data: [], error: null };
+  let commentsResult = { data: [], error: null };
+
+  if (projectIds.length) {
+    projectsResult = await client
+      .from("projects")
+      .select("*")
+      .in("id", projectIds)
+      .order("created_at", { ascending: false });
+    if (projectsResult.error) throw projectsResult.error;
+
+    videosResult = await client
+      .from("videos")
+      .select("*")
+      .in("project_id", projectIds)
+      .order("created_at", { ascending: false });
+    if (videosResult.error) throw videosResult.error;
+
+    const videoIds = [...new Set((videosResult.data || []).map((row) => row.id).filter(Boolean))];
+    if (videoIds.length) {
+      versionsResult = await client
+        .from("video_versions")
+        .select("*")
+        .in("video_id", videoIds)
+        .order("created_at", { ascending: false });
+      if (versionsResult.error) throw versionsResult.error;
+
+      const versionIds = [...new Set((versionsResult.data || []).map((row) => row.id).filter(Boolean))];
+      if (versionIds.length) {
+        commentsResult = await client
+          .from("comments")
+          .select("*")
+          .in("version_id", versionIds)
+          .order("created_at", { ascending: false });
+        if (commentsResult.error) throw commentsResult.error;
+      }
+    }
+  }
+
+  state.clients = (clientsResult.data || []).map(mapClientRow);
+  state.projects = (projectsResult.data || []).map(mapProjectRow);
+  state.videos = (videosResult.data || []).map(mapVideoRow);
+  state.versions = (versionsResult.data || []).map(mapVersionRow);
+  state.comments = (commentsResult.data || []).map(mapCommentRow);
+  state.deliveredProjectIds = projectIds;
   state.portalLoading = false;
   saveState();
   return true;
