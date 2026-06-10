@@ -469,8 +469,22 @@ function stopCrossDeviceSync() {
 }
 
 async function saveAndReloadPortalData() {
+  const previousSelection = {
+    selectedClientId: state.selectedClientId,
+    selectedProjectId: state.selectedProjectId,
+    selectedVideoId: state.selectedVideoId,
+  };
   await savePortalData();
   await loadPortalDataFromSupabase();
+  state.selectedClientId = state.clients.some((client) => client.id === previousSelection.selectedClientId)
+    ? previousSelection.selectedClientId
+    : state.clients[0]?.id || "";
+  state.selectedProjectId = state.projects.some((project) => project.id === previousSelection.selectedProjectId)
+    ? previousSelection.selectedProjectId
+    : state.projects.find((project) => project.clientId === state.selectedClientId)?.id || "";
+  state.selectedVideoId = state.videos.some((video) => video.id === previousSelection.selectedVideoId)
+    ? previousSelection.selectedVideoId
+    : state.videos.find((video) => video.projectId === state.selectedProjectId)?.id || "";
   saveState();
 }
 
@@ -596,7 +610,7 @@ function slug(value) {
 function showToast(message) {
   toast.textContent = message;
   toast.classList.add("show");
-  window.setTimeout(() => toast.classList.remove("show"), 2200);
+  window.setTimeout(() => toast.classList.remove("show"), 4200);
 }
 
 function upsertById(collection, item) {
@@ -1576,6 +1590,16 @@ function openDialog(intent = createIntent) {
     return;
   }
 
+  if (intent === "project" && !activeClient()) {
+    showToast("Create a client before adding a project");
+    return;
+  }
+
+  if ((intent === "video" || intent === "version") && !activeProject()) {
+    showToast("Open a project before uploading");
+    return;
+  }
+
   dialogTitle.textContent = {
     client: "New client",
     project: "New project",
@@ -1584,7 +1608,10 @@ function openDialog(intent = createIntent) {
   }[intent];
   if (createSubmit) {
     createSubmit.textContent = intent === "version" ? "Upload version" : "Save";
+    createSubmit.disabled = false;
   }
+
+  createForm.reset();
 
   dialogFields.innerHTML = fields[intent]
     .map(
@@ -1606,14 +1633,14 @@ function openDialog(intent = createIntent) {
   dialog.showModal();
 }
 
-createForm.addEventListener("submit", async (event) => {
+async function handleCreateFormSubmit(event) {
   event.preventDefault();
   event.stopPropagation();
   if (isSavingCreateForm) return;
   isSavingCreateForm = true;
   const form = new FormData(createForm);
   const nowId = Date.now();
-  const saveButton = createForm.querySelector('button[type="submit"]');
+  const saveButton = createSubmit;
   const originalSaveText = saveButton.textContent;
   const previousData = {
     clients: structuredClone(state.clients),
@@ -1628,6 +1655,7 @@ createForm.addEventListener("submit", async (event) => {
   };
   saveButton.disabled = true;
   saveButton.textContent = createIntent === "version" ? "Starting upload..." : "Saving...";
+  showToast(createIntent === "version" ? "Starting upload..." : "Saving...");
   syncPaused = true;
 
   try {
@@ -1719,6 +1747,7 @@ createForm.addEventListener("submit", async (event) => {
         createdAt: "Just now",
         approved: false,
       });
+      state.selectedVideoId = video.id;
     }
 
     saveButton.textContent = "Saving version...";
@@ -1749,7 +1778,10 @@ createForm.addEventListener("submit", async (event) => {
     saveButton.disabled = false;
     saveButton.textContent = originalSaveText;
   }
-});
+}
+
+createForm.addEventListener("submit", handleCreateFormSubmit);
+createSubmit.addEventListener("click", handleCreateFormSubmit);
 
 document.querySelectorAll("[data-route]").forEach((item) => {
   item.addEventListener("click", (event) => {
