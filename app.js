@@ -528,7 +528,6 @@ function renderProjectDetail() {
 
   const client = state.clients.find((item) => item.id === project.clientId);
   const videos = state.videos.filter((video) => video.projectId === project.id);
-  const hasVideos = videos.length > 0;
   setPageHeader(project.name);
   document.querySelector("#openCreate").textContent = "Add video";
   createIntent = "video";
@@ -542,35 +541,31 @@ function renderProjectDetail() {
           <p class="muted">${project.description}</p>
         </div>
         <div class="stack">
-          ${
-            hasVideos
-              ? videos
-                  .map((video) => {
-                    const version = latestVersion(video.id);
-                    return `
-                      <div class="list-row">
-                        <div>
-                          <h3>${video.title}</h3>
-                          <p class="muted">Due ${video.due}. Latest: ${version?.label || "No versions yet"}</p>
-                        </div>
-                        <div class="inline-actions">
-                          <span class="status-pill ${video.status === "approved" ? "approved" : ""}">${video.status}</span>
-                          <button class="ghost-button" data-video="${video.id}">Review</button>
-                        </div>
-                      </div>
-                    `;
-                  })
-                  .join("")
-              : `<div class="empty">No videos yet. Add the first video, then upload its first review version.</div>`
-          }
+          ${videos
+            .map((video) => {
+              const version = latestVersion(video.id);
+              return `
+                <div class="list-row">
+                  <div>
+                    <h3>${video.title}</h3>
+                    <p class="muted">Due ${video.due}. Latest: ${version?.label || "No versions yet"}</p>
+                  </div>
+                  <div class="inline-actions">
+                    <span class="status-pill ${video.status === "approved" ? "approved" : ""}">${video.status}</span>
+                    <button class="ghost-button" data-video="${video.id}">Review</button>
+                  </div>
+                </div>
+              `;
+            })
+            .join("")}
         </div>
       </section>
       <aside class="panel stack">
         <p class="eyebrow">Delivery actions</p>
         <button class="primary-button" id="sendClient">Send latest to client</button>
-        <button class="ghost-button" id="addVersion">${hasVideos ? "Upload new version" : "Add first video"}</button>
+        <button class="ghost-button" id="addVersion">Upload new version</button>
         <button class="ghost-button" id="backProjects">Back to client</button>
-        <p class="muted">${hasVideos ? "Upload a new review version when the next cut is ready." : "Start by adding a video title. After that, upload the first Bunny Stream version."}</p>
+        <p class="muted">Uploads can be routed to Bunny Stream or Vimeo. This prototype stores the review workflow locally until API keys are connected.</p>
       </aside>
     </div>
   `;
@@ -585,7 +580,7 @@ function renderProjectDetail() {
   root.querySelector("#sendClient").addEventListener("click", (event) => {
     sendLatestToClient(event.currentTarget);
   });
-  root.querySelector("#addVersion").addEventListener("click", () => openDialog(hasVideos ? "version" : "video"));
+  root.querySelector("#addVersion").addEventListener("click", () => openDialog("version"));
   root.querySelector("#backProjects").addEventListener("click", renderProjects);
 }
 
@@ -853,21 +848,16 @@ createForm.addEventListener("submit", async (event) => {
 
     if (createIntent === "video") {
       const title = form.get("title") || "New Video";
-      const videoId = slug(title) || `video-${nowId}`;
       state.videos.unshift({
-        id: videoId,
+        id: slug(title) || `video-${nowId}`,
         projectId: activeProject().id,
         title,
         status: "draft",
         due: form.get("due") || "Soon",
       });
-      state.selectedVideoId = videoId;
     }
 
     if (createIntent === "version") {
-      const video = activeVideo();
-      if (!video) throw new Error("Add a video before uploading a version");
-
       const file = form.get("file");
       const label = form.get("label") || "New version";
       const provider = form.get("provider") || "Bunny Stream";
@@ -877,7 +867,7 @@ createForm.addEventListener("submit", async (event) => {
       if (file?.size) {
         const upload = await uploadVersionFileToBunny({
           file,
-          title: `${video.title} - ${label}`,
+          title: `${activeVideo().title} - ${label}`,
           button: saveButton,
         });
         embedUrl = upload.embedUrl;
@@ -886,7 +876,7 @@ createForm.addEventListener("submit", async (event) => {
 
       state.versions.unshift({
         id: `version-${nowId}`,
-        videoId: video.id,
+        videoId: activeVideo().id,
         label,
         provider,
         embedUrl,
