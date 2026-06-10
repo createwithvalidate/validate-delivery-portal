@@ -848,16 +848,35 @@ createForm.addEventListener("submit", async (event) => {
 
     if (createIntent === "video") {
       const title = form.get("title") || "New Video";
+      const videoId = slug(title) || `video-${nowId}`;
       state.videos.unshift({
-        id: slug(title) || `video-${nowId}`,
+        id: videoId,
         projectId: activeProject().id,
         title,
         status: "draft",
         due: form.get("due") || "Soon",
       });
+      state.selectedVideoId = videoId;
     }
 
     if (createIntent === "version") {
+      const project = activeProject();
+      let video = activeVideo();
+      if (!video) {
+        if (!project) throw new Error("Open a project before uploading");
+        const title = project.name || "New Video";
+        const videoId = slug(title) || `video-${nowId}`;
+        video = {
+          id: videoId,
+          projectId: project.id,
+          title,
+          status: "draft",
+          due: "Soon",
+        };
+        state.videos.unshift(video);
+        state.selectedVideoId = videoId;
+      }
+
       const file = form.get("file");
       const label = form.get("label") || "New version";
       const provider = form.get("provider") || "Bunny Stream";
@@ -867,7 +886,7 @@ createForm.addEventListener("submit", async (event) => {
       if (file?.size) {
         const upload = await uploadVersionFileToBunny({
           file,
-          title: `${activeVideo().title} - ${label}`,
+          title: `${video.title} - ${label}`,
           button: saveButton,
         });
         embedUrl = upload.embedUrl;
@@ -876,7 +895,7 @@ createForm.addEventListener("submit", async (event) => {
 
       state.versions.unshift({
         id: `version-${nowId}`,
-        videoId: activeVideo().id,
+        videoId: video.id,
         label,
         provider,
         embedUrl,
