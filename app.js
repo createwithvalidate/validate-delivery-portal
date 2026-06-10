@@ -939,9 +939,17 @@ async function uploadToBunny(file, credentials, onProgress) {
   }
 
   return new Promise((resolve, reject) => {
+    const formatUploadError = (error) => {
+      const status = error?.originalResponse?.getStatus?.();
+      const body = error?.originalResponse?.getBody?.();
+      const detail = [status ? `status ${status}` : "", body].filter(Boolean).join(": ");
+      return new Error(detail ? `Bunny upload failed (${detail})` : error?.message || "Bunny upload failed");
+    };
+
     const upload = new tusClient.Upload(file, {
       endpoint: credentials.endpoint,
-      retryDelays: [0, 3000, 5000, 10000, 20000],
+      retryDelays: [0, 3000, 5000, 10000, 20000, 60000, 60000],
+      removeFingerprintOnSuccess: true,
       headers: {
         AuthorizationSignature: credentials.signature,
         AuthorizationExpire: String(credentials.expirationTime),
@@ -950,9 +958,9 @@ async function uploadToBunny(file, credentials, onProgress) {
       },
       metadata: {
         filetype: file.type || "video/mp4",
-        title: file.name,
+        title: credentials.title || file.name,
       },
-      onError: reject,
+      onError: (error) => reject(formatUploadError(error)),
       onProgress: (bytesUploaded, bytesTotal) => {
         const percent = bytesTotal ? Math.round((bytesUploaded / bytesTotal) * 100) : 0;
         onProgress(percent);
@@ -963,13 +971,14 @@ async function uploadToBunny(file, credentials, onProgress) {
     upload.findPreviousUploads().then((previousUploads) => {
       if (previousUploads.length) upload.resumeFromPreviousUpload(previousUploads[0]);
       upload.start();
-    });
+    }).catch((error) => reject(formatUploadError(error)));
   });
 }
 
 async function uploadVersionFileToBunny({ file, title, button }) {
   button.textContent = "Creating Bunny video...";
   const credentials = await createBunnyUploadCredentials({ title });
+  credentials.title = title;
   button.textContent = "Uploading 0%";
   await uploadToBunny(file, credentials, (percent) => {
     button.textContent = `Uploading ${percent}%`;
@@ -1675,6 +1684,10 @@ createForm.addEventListener("submit", async (event) => {
       const provider = form.get("provider") || "Bunny Stream";
       let embedUrl = form.get("embedUrl") || "";
       let bunnyVideoId = "";
+
+      if (!file?.size && !embedUrl.trim()) {
+        throw new Error("Choose a video file or paste an embed URL before saving a version");
+      }
 
       if (file?.size) {
         const upload = await uploadVersionFileToBunny({

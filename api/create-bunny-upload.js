@@ -83,6 +83,6 @@ module.exports = async function handler(request, response) {
     expirationTime,
     signature,
     endpoint: "https://video.bunnycdn.com/tusupload",
-    embedUrl: `https://player.mediadelivery.net/embed/${libraryId}/${video.guid}`,
+    embedUrl: `https://iframe.mediadelivery.net/embed/${libraryId}/${video.guid}`,
   });
 };
