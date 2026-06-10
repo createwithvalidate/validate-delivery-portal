@@ -45,6 +45,12 @@ button {
   cursor: pointer;
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+  transform: none !important;
+}
+
 .login-screen {
   position: relative;
   isolation: isolate;
@@ -531,6 +537,11 @@ button {
   border-radius: var(--radius);
   color: var(--text);
   background: rgba(255, 255, 255, 0.04);
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    color 160ms ease,
+    transform 160ms ease;
 }
 
 .nav-item {
@@ -828,10 +839,15 @@ button {
 .card {
   min-height: 176px;
   padding: 16px;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    transform 160ms ease;
 }
 
 .card:hover {
   border-color: var(--line-strong);
+  background: rgba(18, 18, 20, 0.94);
 }
 
 .card h3,
@@ -865,6 +881,26 @@ button {
   font-size: 0.78rem;
   text-transform: uppercase;
   letter-spacing: 0.12em;
+}
+
+.meta-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 12px;
+}
+
+.meta-strip span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 25px;
+  padding: 0 9px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--dim);
+  font-size: 0.72rem;
+  font-weight: 800;
 }
 
 .panel {
@@ -935,6 +971,15 @@ button {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: rgba(255, 255, 255, 0.026);
+  transition:
+    border-color 160ms ease,
+    background 160ms ease;
+}
+
+.list-row:hover,
+.version-row:hover {
+  border-color: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .list-row h3,
@@ -967,6 +1012,24 @@ button {
   border: 0;
 }
 
+.review-placeholder {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.015)),
+    rgba(8, 8, 9, 0.78);
+}
+
+.review-placeholder span {
+  color: rgba(251, 251, 251, 0.48);
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
 .play-badge {
   display: grid;
   place-items: center;
@@ -982,6 +1045,30 @@ button {
   justify-content: space-between;
   gap: 18px;
   margin: 18px 0;
+}
+
+.action-status {
+  display: grid;
+  gap: 5px;
+  padding: 13px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.action-status strong {
+  font-size: 0.92rem;
+}
+
+.action-status span {
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.action-status.ready {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.055);
 }
 
 .comment-row {
@@ -1094,6 +1181,12 @@ label {
   border-radius: var(--radius);
   color: var(--muted);
   text-align: center;
+}
+
+.compact-empty {
+  padding: 18px;
+  background: rgba(255, 255, 255, 0.018);
+  font-size: 0.92rem;
 }
 
 @media (max-width: 1080px) {

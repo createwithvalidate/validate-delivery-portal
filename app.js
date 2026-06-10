@@ -252,6 +252,18 @@ function latestVersion(videoId = activeVideo()?.id) {
   return state.versions.find((version) => version.videoId === videoId);
 }
 
+function projectVideos(projectId) {
+  return state.videos.filter((video) => video.projectId === projectId);
+}
+
+function videoVersions(videoId) {
+  return state.versions.filter((version) => version.videoId === videoId);
+}
+
+function projectVersionCount(projectId) {
+  return projectVideos(projectId).reduce((total, video) => total + videoVersions(video.id).length, 0);
+}
+
 function updateStats() {
   document.querySelector("#heroClientCount").textContent = `${state.clients.length} clients`;
   document.querySelector("#heroProjectCount").textContent =
@@ -421,14 +433,20 @@ function renderClients() {
       ${state.clients
         .map((client) => {
           const projects = state.projects.filter((project) => project.clientId === client.id);
+          const activeProjects = projects.filter((project) => !project.archived);
+          const versions = activeProjects.reduce((total, project) => total + projectVersionCount(project.id), 0);
           return `
             <article class="card">
               <p class="eyebrow">${client.contact}</p>
               <h3>${client.name}</h3>
               <p>${client.summary}</p>
+              <div class="meta-strip">
+                <span>${client.email || "No email"}</span>
+                <span>${versions} versions</span>
+              </div>
               <div class="card-footer">
-                <span class="metric">${projects.length} projects</span>
-                <button class="ghost-button" data-client="${client.id}">Open</button>
+                <span class="metric">${activeProjects.length} projects</span>
+                <button class="ghost-button" data-client="${client.id}">Open workspace</button>
               </div>
             </article>
           `;
@@ -476,19 +494,27 @@ function renderProjects() {
           projects.length
             ? projects
                 .map(
-                  (project) => `
-                    <div class="list-row">
-                      <div>
-                        <h3>${project.name}</h3>
-                        <p class="muted">${project.description}</p>
+                  (project) => {
+                    const videos = projectVideos(project.id);
+                    const versions = projectVersionCount(project.id);
+                    return `
+                      <div class="list-row project-row">
+                        <div>
+                          <h3>${project.name}</h3>
+                          <p class="muted">${project.description}</p>
+                          <div class="meta-strip">
+                            <span>${videos.length} videos</span>
+                            <span>${versions} versions</span>
+                          </div>
+                        </div>
+                        <div class="inline-actions">
+                          <span class="status-pill ${project.status === "approved" ? "approved" : ""}">${project.status}</span>
+                          <button class="ghost-button" data-project="${project.id}">Open</button>
+                          <button class="ghost-button" data-archive-project="${project.id}">Archive</button>
+                        </div>
                       </div>
-                      <div class="inline-actions">
-                        <span class="status-pill ${project.status === "approved" ? "approved" : ""}">${project.status}</span>
-                        <button class="ghost-button" data-project="${project.id}">Open</button>
-                        <button class="ghost-button" data-archive-project="${project.id}">Archive</button>
-                      </div>
-                    </div>
-                  `,
+                    `;
+                  },
                 )
                 .join("")
             : `<div class="empty project-empty">No active projects yet. Create a project when a new cut is ready for review.</div>`
@@ -528,6 +554,14 @@ function renderProjectDetail() {
 
   const client = state.clients.find((item) => item.id === project.clientId);
   const videos = state.videos.filter((video) => video.projectId === project.id);
+  const latestVideo = videos[0];
+  const latest = latestVideo ? latestVersion(latestVideo.id) : null;
+  const canSend = Boolean(client?.email && latestVideo && latest);
+  const sendStatus = !client?.email
+    ? "Add a client email before sending."
+    : latest
+      ? `${latest.label} is ready for ${client.email}`
+      : "Upload a review version before emailing the client.";
   setPageHeader(project.name);
   document.querySelector("#openCreate").textContent = "Add video";
   createIntent = "video";
@@ -549,6 +583,10 @@ function renderProjectDetail() {
                   <div>
                     <h3>${video.title}</h3>
                     <p class="muted">Due ${video.due}. Latest: ${version?.label || "No versions yet"}</p>
+                    <div class="meta-strip">
+                      <span>${videoVersions(video.id).length} versions</span>
+                      <span>${state.comments.filter((comment) => comment.versionId === version?.id).length} notes</span>
+                    </div>
                   </div>
                   <div class="inline-actions">
                     <span class="status-pill ${video.status === "approved" ? "approved" : ""}">${video.status}</span>
@@ -557,15 +595,19 @@ function renderProjectDetail() {
                 </div>
               `;
             })
-            .join("")}
+            .join("") || `<div class="empty compact-empty">No videos yet. Upload a version or add a video to start review.</div>`}
         </div>
       </section>
       <aside class="panel stack">
         <p class="eyebrow">Delivery actions</p>
-        <button class="primary-button" id="sendClient">Send latest to client</button>
+        <div class="action-status ${canSend ? "ready" : ""}">
+          <strong>${canSend ? "Ready to send" : "Needs attention"}</strong>
+          <span>${sendStatus}</span>
+        </div>
+        <button class="primary-button" id="sendClient" ${canSend ? "" : "disabled"}>Send latest to client</button>
         <button class="ghost-button" id="addVersion">Upload new version</button>
         <button class="ghost-button" id="backProjects">Back to client</button>
-        <p class="muted">Uploads can be routed to Bunny Stream or Vimeo. This prototype stores the review workflow locally until API keys are connected.</p>
+        <p class="muted">Uploads route through Bunny Stream when you choose an MP4. Embed links still work for Vimeo or other hosted cuts.</p>
       </aside>
     </div>
   `;
@@ -623,7 +665,7 @@ function renderReviewShell(isAdmin) {
           ${
             version?.embedUrl
               ? `<iframe title="${video.title}" src="${version.embedUrl}" allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;" allowfullscreen></iframe>`
-              : `<div class="play-badge">PLAY</div>`
+              : `<div class="review-placeholder"><span>Awaiting video</span></div>`
           }
         </div>
         <div class="review-head">
@@ -655,30 +697,34 @@ function renderReviewShell(isAdmin) {
                     `,
                   )
                   .join("")
-              : `<p class="muted">No comments yet.</p>`
+              : `<div class="empty compact-empty">No notes yet. Add the first review note below.</div>`
           }
           <form class="comment-form" id="commentForm">
             <textarea name="body" placeholder="Add a note for this version"></textarea>
-            <button class="primary-button">Add comment</button>
+            <button class="primary-button" ${version ? "" : "disabled"}>Add comment</button>
           </form>
         </div>
       </section>
       <aside class="panel stack">
         <p class="eyebrow">Version history</p>
-        ${versions
-          .map(
-            (item) => `
-              <div class="version-row">
-                <div>
-                  <h3>${item.label}</h3>
-                  <p class="muted">${item.createdAt}</p>
-                </div>
-                <span class="status-pill ${item.approved ? "approved" : ""}">${item.approved ? "approved" : item.provider}</span>
-              </div>
-            `,
-          )
-          .join("")}
-        <button class="primary-button" id="approveVersion">${version?.approved ? "Approved" : "Mark approved"}</button>
+        ${
+          versions.length
+            ? versions
+                .map(
+                  (item) => `
+                    <div class="version-row">
+                      <div>
+                        <h3>${item.label}</h3>
+                        <p class="muted">${item.createdAt}</p>
+                      </div>
+                      <span class="status-pill ${item.approved ? "approved" : ""}">${item.approved ? "approved" : item.provider}</span>
+                    </div>
+                  `,
+                )
+                .join("")
+            : `<div class="empty compact-empty">No versions uploaded yet.</div>`
+        }
+        <button class="primary-button" id="approveVersion" ${version ? "" : "disabled"}>${version?.approved ? "Approved" : "Mark approved"}</button>
         ${isAdmin ? `<button class="ghost-button" id="backProject">Back to project</button>` : ""}
       </aside>
     </div>
@@ -720,7 +766,11 @@ function renderActivity() {
   root.innerHTML = `
     <div class="panel stack">
       <p class="eyebrow">Recent</p>
-      ${state.activity.map((item) => `<div class="list-row"><span>${item}</span><span class="muted">Now</span></div>`).join("")}
+      ${
+        state.activity.length
+          ? state.activity.map((item) => `<div class="list-row"><span>${item}</span><span class="muted">Now</span></div>`).join("")
+          : `<div class="empty compact-empty">No activity yet. Sent emails and approvals will show up here.</div>`
+      }
     </div>
   `;
 }
@@ -946,7 +996,12 @@ document.querySelector("#signOut").addEventListener("click", () => {
   render();
 });
 document.querySelector("#copyClientLink").addEventListener("click", async () => {
-  const link = `${location.origin}${location.pathname}#review/${activeProject()?.id}`;
+  const project = activeProject();
+  if (!project) {
+    showToast("Open a project before copying a review link");
+    return;
+  }
+  const link = `${location.origin}${location.pathname}#review/${project.id}`;
   await navigator.clipboard?.writeText(link);
   showToast("Review link copied");
 });
