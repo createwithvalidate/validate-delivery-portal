@@ -723,6 +723,21 @@ button:disabled {
   overflow: hidden;
 }
 
+.hero-band.admin-hero {
+  min-height: 152px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.012)),
+    #09090a;
+}
+
+.hero-band.admin-hero .dashboard-photo-grid {
+  display: none;
+}
+
+.hero-band.client-hero {
+  min-height: 202px;
+}
+
 .dashboard-photo-grid {
   position: absolute;
   inset: 0;

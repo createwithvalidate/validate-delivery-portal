@@ -33,6 +33,8 @@ const topbar = document.querySelector(".topbar");
 const loginScreen = document.querySelector("#loginScreen");
 const appShell = document.querySelector("#appShell");
 const dashboardHero = document.querySelector("#dashboardHero");
+const heroEyebrow = document.querySelector("#heroEyebrow");
+const heroHeadline = document.querySelector("#heroHeadline");
 const loginForm = document.querySelector("#loginForm");
 const loginSubmit = document.querySelector("#loginSubmit");
 const passwordField = document.querySelector("#passwordField");
@@ -1166,12 +1168,30 @@ async function deleteClient(clientId) {
   renderClients();
 }
 
+function setHeroMode(mode, projects = []) {
+  if (!dashboardHero) return;
+  const isClient = mode === "client";
+  dashboardHero.hidden = false;
+  dashboardHero.classList.toggle("client-hero", isClient);
+  dashboardHero.classList.toggle("admin-hero", !isClient);
+  heroEyebrow.textContent = isClient ? "Your review workspace" : "Delivery control";
+  heroHeadline.textContent = isClient
+    ? "Open each project, review the latest cut, and keep notes in one place."
+    : "Manage clients, projects, invites, and approvals from one clean workspace.";
+  document.querySelector("#heroClientCount").textContent = isClient
+    ? `${projects.length} projects`
+    : `${state.clients.length} clients`;
+  document.querySelector("#heroProjectCount").textContent = isClient
+    ? `${projects.reduce((total, project) => total + projectVersionCount(project.id), 0)} versions`
+    : `${state.projects.filter((project) => !project.archived).length} active projects`;
+  document.querySelector("#heroApprovalCount").textContent = isClient
+    ? `${projects.reduce((total, project) => total + projectVideos(project.id).length, 0)} videos`
+    : `${state.versions.filter((version) => version.approved).length} approved`;
+}
+
 function updateStats() {
-  document.querySelector("#heroClientCount").textContent = `${state.clients.length} clients`;
-  document.querySelector("#heroProjectCount").textContent =
-    `${state.projects.filter((project) => !project.archived).length} active projects`;
-  document.querySelector("#heroApprovalCount").textContent =
-    `${state.versions.filter((version) => version.approved).length} approved`;
+  if (state.mode === "client") return;
+  setHeroMode("admin");
 }
 
 async function emailProjectClient({ client, project, video, version, emailType = "version" }) {
@@ -1415,7 +1435,7 @@ function render() {
 
 function renderClients() {
   currentView = "clients";
-  dashboardHero.hidden = false;
+  setHeroMode("admin");
   setPageHeader("Clients");
   document.querySelector("#openCreate").textContent = "New client";
   document.querySelector("#openCreate").hidden = state.session?.role !== "admin";
@@ -1651,7 +1671,6 @@ function renderAdminReview() {
 
 function renderClientDashboard() {
   currentView = "clientDashboard";
-  dashboardHero.hidden = true;
   const client = activeClientAccount();
   const accountEmail = state.session?.email || client?.email || "this account";
   if (!client) {
@@ -1663,6 +1682,7 @@ function renderClientDashboard() {
 
   const deliveredProjectIds = new Set(state.deliveredProjectIds);
   const projects = state.projects.filter((project) => !project.archived && deliveredProjectIds.has(project.id));
+  setHeroMode("client", projects);
   const meta = state.portalMeta || {};
   const loadDetails = [
     `Signed in as ${accountEmail}`,
