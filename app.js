@@ -23,7 +23,6 @@ const state = loadState();
 state.session ??= null;
 state.clientAccount ??= null;
 state.deliveredProjectIds ??= [];
-cleanupOldTestClientData();
 const root = document.querySelector("#viewRoot");
 const pageTitle = document.querySelector("#pageTitle");
 const pageEyebrow = document.querySelector(".topbar .eyebrow");
@@ -1673,9 +1672,20 @@ document.querySelector("#copyClientLink").addEventListener("click", async () => 
   showToast("Review link copied");
 });
 
-setLoginRole("client");
-render();
-openReviewFromHash({ showMissingMessage: false });
+async function bootPortal() {
+  setLoginRole("client");
+  if (state.session) {
+    try {
+      await loadPortalDataFromSupabase();
+    } catch (error) {
+      console.warn("Supabase startup load failed", error);
+    }
+  }
+  render();
+  openReviewFromHash({ showMissingMessage: false });
+}
+
+bootPortal();
 window.addEventListener("hashchange", () => {
   openReviewFromHash({ showMissingMessage: true });
 });
