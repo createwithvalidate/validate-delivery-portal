@@ -1,6 +1,7 @@
 const supabaseUrl = process.env.SUPABASE_URL || "https://axvnifoamejuxxqhezwr.supabase.co";
 const supabasePublishableKey =
   process.env.SUPABASE_PUBLISHABLE_KEY || "sb_publishable_IFOVI5nvp8DdOeqAs4lNsg__Iewd4BN";
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
 function sendJson(response, statusCode, body) {
   response.statusCode = statusCode;
@@ -21,14 +22,23 @@ function inFilter(values) {
   return `in.(${values.map((value) => `"${String(value).replaceAll('"', '\\"')}"`).join(",")})`;
 }
 
-async function supabaseFetch(path, token) {
-  const response = await fetch(`${supabaseUrl}${path}`, {
-    headers: {
-      Accept: "application/json",
-      apikey: supabasePublishableKey,
-      Authorization: `Bearer ${token}`,
-    },
-  });
+async function supabaseFetch(path, headers, timeoutMs = 6500) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let response;
+  try {
+    response = await fetch(`${supabaseUrl}${path}`, {
+      headers,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw new Error("Supabase request took too long.");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
   const body = await response.json().catch(() => null);
   if (!response.ok) {
     const message = body?.message || body?.error_description || body?.error || "Supabase request failed";
@@ -38,11 +48,28 @@ async function supabaseFetch(path, token) {
 }
 
 async function getUser(token) {
-  return supabaseFetch("/auth/v1/user", token);
+  return supabaseFetch(
+    "/auth/v1/user",
+    {
+      Accept: "application/json",
+      apikey: supabasePublishableKey,
+      Authorization: `Bearer ${token}`,
+    },
+    5000,
+  );
 }
 
 async function getRows(table, params, token) {
-  return supabaseFetch(`/rest/v1/${table}?${params.toString()}`, token);
+  const restKey = supabaseServiceRoleKey || supabasePublishableKey;
+  return supabaseFetch(
+    `/rest/v1/${table}?${params.toString()}`,
+    {
+      Accept: "application/json",
+      apikey: restKey,
+      Authorization: `Bearer ${supabaseServiceRoleKey || token}`,
+    },
+    6500,
+  );
 }
 
 module.exports = async function handler(request, response) {
@@ -140,6 +167,7 @@ module.exports = async function handler(request, response) {
       deliveredProjectIds: projectIds,
       meta: {
         email,
+        usingServiceRole: Boolean(supabaseServiceRoleKey),
         accessCount: accessRows.length,
         projectCount: projects.length,
         videoCount: videos.length,

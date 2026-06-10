@@ -153,7 +153,7 @@ Recommended environment variables:
 ```txt
 SUPABASE_URL=
 SUPABASE_PUBLISHABLE_KEY=
-SUPABASE_SERVICE_ROLE_KEY=only_for_server_routes_later
+SUPABASE_SERVICE_ROLE_KEY=server_only_service_role_or_secret_key
 BUNNY_STREAM_LIBRARY_ID=
 BUNNY_STREAM_API_KEY=
 VIMEO_ACCESS_TOKEN=

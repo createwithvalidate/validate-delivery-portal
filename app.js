@@ -12,6 +12,7 @@ const seedData = {
   comments: [],
   activity: [],
   deliveredProjectIds: [],
+  portalMeta: null,
 };
 
 const storeKey = "validate-delivery-portal-empty-v4";
@@ -23,6 +24,7 @@ const state = loadState();
 state.session ??= null;
 state.clientAccount ??= null;
 state.deliveredProjectIds ??= [];
+state.portalMeta ??= null;
 state.portalLoading ??= false;
 const root = document.querySelector("#viewRoot");
 const pageTitle = document.querySelector("#pageTitle");
@@ -293,13 +295,23 @@ function mapCommentRow(row) {
   };
 }
 
-function applyPortalRows({ clients = [], projects = [], videos = [], versions = [], comments = [], deliveredProjectIds = [] }) {
+function applyPortalRows({ clients = [], projects = [], videos = [], versions = [], comments = [], deliveredProjectIds = [], meta = null }) {
   state.clients = clients.map(mapClientRow);
   state.projects = projects.map(mapProjectRow);
   state.videos = videos.map(mapVideoRow);
   state.versions = versions.map(mapVersionRow);
   state.comments = comments.map(mapCommentRow);
   state.deliveredProjectIds = [...new Set(deliveredProjectIds)];
+  state.portalMeta = {
+    source: meta?.source || "server",
+    email: meta?.email || state.session?.email || "",
+    usingServiceRole: Boolean(meta?.usingServiceRole),
+    accessCount: Number(meta?.accessCount ?? state.deliveredProjectIds.length),
+    projectCount: Number(meta?.projectCount ?? projects.length),
+    videoCount: Number(meta?.videoCount ?? videos.length),
+    versionCount: Number(meta?.versionCount ?? versions.length),
+    error: meta?.error || "",
+  };
 }
 
 async function supabaseAccessToken() {
@@ -391,10 +403,22 @@ async function loadClientPortalDataFromApi() {
 }
 
 async function loadClientPortalDataFromSupabase(client) {
+  let apiErrorMessage = "";
   try {
     return await loadClientPortalDataFromApi();
   } catch (error) {
+    apiErrorMessage = error.message || "Client portal API load failed.";
     console.warn("Client portal API load failed, falling back to browser Supabase", error);
+    state.portalMeta = {
+      source: "browser",
+      email: state.session?.email || "",
+      usingServiceRole: false,
+      accessCount: 0,
+      projectCount: 0,
+      videoCount: 0,
+      versionCount: 0,
+      error: apiErrorMessage,
+    };
   }
 
   const accessResult = await withTimeout(
@@ -477,6 +501,16 @@ async function loadClientPortalDataFromSupabase(client) {
   state.versions = (versionsResult.data || []).map(mapVersionRow);
   state.comments = (commentsResult.data || []).map(mapCommentRow);
   state.deliveredProjectIds = projectIds;
+  state.portalMeta = {
+    source: "browser",
+    email: state.session?.email || "",
+    usingServiceRole: false,
+    accessCount: projectIds.length,
+    projectCount: state.projects.length,
+    videoCount: state.videos.length,
+    versionCount: state.versions.length,
+    error: apiErrorMessage,
+  };
   state.portalLoading = false;
   saveState();
   return true;
@@ -500,6 +534,13 @@ async function refreshPortalData({ openHash = false, showMissingMessage = false 
     return true;
   } catch (error) {
     state.portalLoading = false;
+    if (state.session?.role !== "admin") {
+      state.portalMeta = {
+        ...(state.portalMeta || {}),
+        email: state.session?.email || state.portalMeta?.email || "",
+        error: error.message || "Could not load saved portal data",
+      };
+    }
     saveState();
     render();
     console.warn("Supabase data refresh failed", error);
@@ -661,15 +702,29 @@ async function syncPortalData({ announce = false, rerender = true } = {}) {
 
   try {
     await loadPortalDataFromSupabase();
-    state.selectedClientId = state.clients.some((client) => client.id === previousSelection.selectedClientId)
-      ? previousSelection.selectedClientId
-      : state.clients[0]?.id || "";
-    state.selectedProjectId = state.projects.some((project) => project.id === previousSelection.selectedProjectId)
-      ? previousSelection.selectedProjectId
-      : state.projects.find((project) => project.clientId === state.selectedClientId)?.id || "";
-    state.selectedVideoId = state.videos.some((video) => video.id === previousSelection.selectedVideoId)
-      ? previousSelection.selectedVideoId
-      : state.videos.find((video) => video.projectId === state.selectedProjectId)?.id || "";
+    if (state.mode === "client") {
+      const deliveredIds = new Set(state.deliveredProjectIds);
+      const invitedProjects = state.projects.filter((project) => !project.archived && deliveredIds.has(project.id));
+      state.selectedClientId = activeClientAccount()?.id || state.clients[0]?.id || state.clientAccount?.id || "";
+      state.selectedProjectId = invitedProjects.some((project) => project.id === previousSelection.selectedProjectId)
+        ? previousSelection.selectedProjectId
+        : invitedProjects[0]?.id || "";
+      state.selectedVideoId = state.videos.some(
+        (video) => video.id === previousSelection.selectedVideoId && video.projectId === state.selectedProjectId,
+      )
+        ? previousSelection.selectedVideoId
+        : state.videos.find((video) => video.projectId === state.selectedProjectId)?.id || "";
+    } else {
+      state.selectedClientId = state.clients.some((client) => client.id === previousSelection.selectedClientId)
+        ? previousSelection.selectedClientId
+        : state.clients[0]?.id || "";
+      state.selectedProjectId = state.projects.some((project) => project.id === previousSelection.selectedProjectId)
+        ? previousSelection.selectedProjectId
+        : state.projects.find((project) => project.clientId === state.selectedClientId)?.id || "";
+      state.selectedVideoId = state.videos.some((video) => video.id === previousSelection.selectedVideoId)
+        ? previousSelection.selectedVideoId
+        : state.videos.find((video) => video.projectId === state.selectedProjectId)?.id || "";
+    }
     const nextFingerprint = portalFingerprint();
     const hasChanged = nextFingerprint !== previousFingerprint;
     lastPortalFingerprint = nextFingerprint;
@@ -1606,12 +1661,15 @@ function renderClientDashboard() {
     return;
   }
 
-  const projects = state.projects.filter(
-    (project) =>
-      project.clientId === client.id &&
-      !project.archived &&
-      state.deliveredProjectIds.includes(project.id),
-  );
+  const deliveredProjectIds = new Set(state.deliveredProjectIds);
+  const projects = state.projects.filter((project) => !project.archived && deliveredProjectIds.has(project.id));
+  const meta = state.portalMeta || {};
+  const loadDetails = [
+    `Signed in as ${accountEmail}`,
+    Number.isFinite(meta.accessCount) ? `${meta.accessCount} invite${meta.accessCount === 1 ? "" : "s"} found` : "",
+    Number.isFinite(meta.projectCount) ? `${meta.projectCount} project${meta.projectCount === 1 ? "" : "s"} loaded` : "",
+    meta.usingServiceRole ? "server verified" : meta.source ? "browser-policy check" : "",
+  ].filter(Boolean);
   setPageHeader(client.name, client.contact || "Client dashboard", "client");
   document.querySelector("#openCreate").hidden = true;
   createIntent = "client";
@@ -1678,6 +1736,8 @@ function renderClientDashboard() {
             : `
               <div class="empty compact-empty">
                 No projects are available for ${accountEmail} yet.
+                ${loadDetails.length ? `<p class="muted load-diagnostics">${loadDetails.join(" / ")}</p>` : ""}
+                ${meta.error ? `<p class="muted load-diagnostics">Last load note: ${meta.error}</p>` : ""}
                 <div class="modal-actions inline-retry">
                   <button class="ghost-button" type="button" id="refreshClientInvites">Refresh invites</button>
                 </div>

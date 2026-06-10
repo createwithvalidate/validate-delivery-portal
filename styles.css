@@ -1232,6 +1232,12 @@ label {
   font-size: 0.92rem;
 }
 
+.load-diagnostics {
+  margin: 10px auto 0;
+  max-width: 760px;
+  font-size: 0.82rem;
+}
+
 @media (max-width: 1080px) {
   .login-screen,
   .shell,
