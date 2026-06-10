@@ -85,6 +85,10 @@ function withTimeout(promise, message = "Request took too long", timeoutMs = 900
   return Promise.race([promise, timeout]).finally(() => window.clearTimeout(timeoutId));
 }
 
+function normalizeEmail(value = "") {
+  return String(value).trim().toLowerCase();
+}
+
 function loadState() {
   try {
     if (new URLSearchParams(window.location.search).has("reset")) {
@@ -601,7 +605,7 @@ async function persistPortalDataToSupabase() {
         const project = state.projects.find((item) => item.id === projectId);
         const clientRecord = state.clients.find((item) => item.id === project?.clientId);
         if (!clientRecord?.email) return null;
-        return { project_id: projectId, email: clientRecord.email.trim().toLowerCase() };
+        return { project_id: projectId, email: normalizeEmail(clientRecord.email) };
       })
       .filter(Boolean);
     if (accessRows.length) {
@@ -1151,6 +1155,27 @@ async function emailProjectClient({ client, project, video, version, emailType =
   return result;
 }
 
+async function verifyProjectInviteAccess({ project, client }) {
+  const supabase = getSupabase();
+  const email = normalizeEmail(client?.email);
+  if (!supabase || !project?.id || !email) {
+    throw new Error("Could not verify the project invite.");
+  }
+
+  const { data, error } = await supabase
+    .from("project_access")
+    .select("project_id,email")
+    .eq("project_id", project.id)
+    .ilike("email", email)
+    .maybeSingle();
+
+  if (error) throw new Error(`Invite access check failed: ${error.message}`);
+  if (!data) {
+    throw new Error(`Invite access did not save for ${email}. Try inviting again.`);
+  }
+  return data;
+}
+
 async function inviteProjectClient(button) {
   const client = activeClient();
   const project = activeProject();
@@ -1172,6 +1197,7 @@ async function inviteProjectClient(button) {
   try {
     if (!state.deliveredProjectIds.includes(project.id)) state.deliveredProjectIds.push(project.id);
     await savePortalData();
+    await verifyProjectInviteAccess({ project, client });
 
     button.textContent = "Sending invite...";
     const video = projectVideos(project.id)[0];
@@ -1572,6 +1598,7 @@ function renderClientDashboard() {
   currentView = "clientDashboard";
   dashboardHero.hidden = true;
   const client = activeClientAccount();
+  const accountEmail = state.session?.email || client?.email || "this account";
   if (!client) {
     setPageHeader("Client dashboard");
     document.querySelector("#openCreate").hidden = true;
@@ -1648,11 +1675,25 @@ function renderClientDashboard() {
                   `;
                 })
                 .join("")
-            : `<div class="empty compact-empty">No projects have been sent to this account yet.</div>`
+            : `
+              <div class="empty compact-empty">
+                No projects are available for ${accountEmail} yet.
+                <div class="modal-actions inline-retry">
+                  <button class="ghost-button" type="button" id="refreshClientInvites">Refresh invites</button>
+                </div>
+              </div>
+            `
         }
       </div>
     </section>
   `;
+
+  root.querySelector("#refreshClientInvites")?.addEventListener("click", () => {
+    state.portalLoading = true;
+    saveState();
+    render();
+    refreshPortalData({ openHash: true, showMissingMessage: true });
+  });
 
   root.querySelectorAll("[data-client-review]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -1986,7 +2027,7 @@ async function handleCreateFormSubmit(event) {
         id: `${slug(name) || "client"}-${nowId}`,
         name,
         contact: form.get("contact") || "Primary contact",
-        email: String(form.get("email") || "").trim().toLowerCase(),
+        email: normalizeEmail(form.get("email")),
         summary: form.get("summary") || "New client workspace.",
         archived: false,
       });

@@ -138,6 +138,13 @@ module.exports = async function handler(request, response) {
       versions,
       comments,
       deliveredProjectIds: projectIds,
+      meta: {
+        email,
+        accessCount: accessRows.length,
+        projectCount: projects.length,
+        videoCount: videos.length,
+        versionCount: versions.length,
+      },
     });
   } catch (error) {
     sendJson(response, 502, { error: error.message || "Client dashboard could not load." });
