@@ -1,7 +1,9 @@
 -- Validate Delivery Portal beta schema
 -- Run this in Supabase SQL Editor.
--- Signup rule: invite-only accounts. Use invites.role = 'admin' for admin accounts
--- and invites.role = 'client' for client accounts.
+-- Signup rule: invite-only accounts.
+-- Reusable beta codes:
+--   VALIDATE-ADMIN-BETA -> admin
+--   VALIDATE-CLIENT-BETA -> client
 
 create extension if not exists pgcrypto;
 
@@ -15,7 +17,7 @@ create table if not exists profiles (
 
 create table if not exists invites (
   id uuid primary key default gen_random_uuid(),
-  email text not null,
+  email text,
   code text not null unique,
   role text not null default 'client' check (role in ('admin', 'client')),
   accepted_by uuid references auth.users(id) on delete set null,
@@ -23,6 +25,8 @@ create table if not exists invites (
   expires_at timestamptz,
   created_at timestamptz not null default now()
 );
+
+alter table invites alter column email drop not null;
 
 create table if not exists clients (
   id text primary key,
@@ -101,11 +105,11 @@ begin
 
   select id, role into invite_id, invited_role
   from invites
-  where lower(email) = lower(new.email)
+  where (email is null or lower(email) = lower(new.email))
     and code = invite_code
-    and accepted_at is null
+    and (accepted_at is null or email is null)
     and (expires_at is null or expires_at > now())
-  order by created_at desc
+  order by email is not null desc, created_at desc
   limit 1;
 
   if lower(new.email) <> 'henry@createwithvalidate.com' and invite_id is null then
@@ -131,7 +135,8 @@ begin
   update invites
   set accepted_by = new.id,
       accepted_at = now()
-  where id = invite_id;
+  where id = invite_id
+    and email is not null;
 
   update project_access
   set user_id = new.id
@@ -310,8 +315,14 @@ create policy "clients_read_own_project_access" on project_access
   );
 
 insert into invites (email, code, role)
-values ('henry@createwithvalidate.com', 'VALIDATE-ADMIN-BETA', 'admin')
-on conflict (code) do nothing;
+values
+  (null, 'VALIDATE-ADMIN-BETA', 'admin'),
+  (null, 'VALIDATE-CLIENT-BETA', 'client')
+on conflict (code) do update set
+  email = excluded.email,
+  role = excluded.role,
+  accepted_by = null,
+  accepted_at = null;
 
 insert into profiles (id, email, full_name, role)
 select id, email, coalesce(raw_user_meta_data->>'full_name', 'Henry'), 'admin'

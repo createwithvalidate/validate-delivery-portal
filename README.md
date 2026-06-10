@@ -124,6 +124,11 @@ To turn on persistent accounts/data:
    - Invite code: `VALIDATE-ADMIN-BETA`
 5. After sign in, Supabase will mark that profile as `admin`.
 
+Reusable beta invite codes:
+
+- Admin accounts: `VALIDATE-ADMIN-BETA`
+- Client accounts: `VALIDATE-CLIENT-BETA`
+
 The login screen now supports:
 
 - Sign in
