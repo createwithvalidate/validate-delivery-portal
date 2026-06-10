@@ -17,7 +17,7 @@ A first-pass client delivery portal for Validate video review, comments, approva
 - Bunny Stream upload handshake for browser video uploads
 - Static Vercel deployment config
 
-The prototype persists demo data in browser `localStorage`.
+The prototype still has a browser `localStorage` fallback, but the beta account foundation is wired for Supabase Auth and the tables in `schema.sql`.
 
 ## Local preview
 
@@ -94,21 +94,57 @@ BUNNY_STREAM_LIBRARY_ID=
 
 ## Backend upgrade path
 
-The next production pass should replace `localStorage` with:
+## Supabase beta setup
 
-- Supabase Auth
-- Supabase Postgres tables from `schema.sql`
-- Vercel environment variables for provider keys
-- Serverless routes for Bunny Stream uploads
-- Serverless routes for Vimeo upload sessions
-- Transactional emails for client notifications
+Supabase project:
+
+```txt
+https://axvnifoamejuxxqhezwr.supabase.co
+```
+
+Signup rule:
+
+```txt
+Invite-only
+```
+
+First admin email:
+
+```txt
+henry@createwithvalidate.com
+```
+
+To turn on persistent accounts/data:
+
+1. Open Supabase.
+2. Go to `SQL Editor`.
+3. Paste and run `schema.sql`.
+4. Create an account on the portal using:
+   - Email: `henry@createwithvalidate.com`
+   - Invite code: `VALIDATE-ADMIN-BETA`
+5. After sign in, Supabase will mark that profile as `admin`.
+
+The login screen now supports:
+
+- Sign in
+- Create account from invite
+- Admin/client mode toggle
+
+The local UI still keeps a fallback state while we finish the full table-by-table data sync.
+
+The next production pass should finish:
+
+- Supabase reads/writes for every create/edit/delete action
+- Admin invite sending through Resend
+- Password reset
+- Client-only RLS verification tests
 
 Recommended environment variables:
 
 ```txt
 SUPABASE_URL=
-SUPABASE_SERVICE_ROLE_KEY=
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
+SUPABASE_PUBLISHABLE_KEY=
+SUPABASE_SERVICE_ROLE_KEY=only_for_server_routes_later
 BUNNY_STREAM_LIBRARY_ID=
 BUNNY_STREAM_API_KEY=
 VIMEO_ACCESS_TOKEN=

@@ -54,6 +54,14 @@
             Password
             <input name="password" type="password" placeholder="Enter password" />
           </label>
+          <label id="nameField" hidden>
+            Full name
+            <input name="fullName" placeholder="Your name" />
+          </label>
+          <label id="inviteCodeField" hidden>
+            Invite code
+            <input name="inviteCode" placeholder="Paste invite code" />
+          </label>
           <button
             class="primary-button"
             type="button"
@@ -61,6 +69,9 @@
             onclick="window.validatePortalLogin?.()"
           >
             Open review
+          </button>
+          <button class="ghost-button" type="button" id="authModeToggle">
+            Create account from invite
           </button>
           <button
             class="admin-access-button"
@@ -173,7 +184,8 @@
     </dialog>
 
     <div class="toast" id="toast" role="status"></div>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/tus-js-client@4.3.1/dist/tus.min.js" defer></script>
-    <script src="app.js?v=20" defer></script>
+    <script src="app.js?v=21" defer></script>
   </body>
 </html>

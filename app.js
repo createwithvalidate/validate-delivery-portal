@@ -16,6 +16,9 @@ const seedData = {
 
 const storeKey = "validate-delivery-portal-empty-v4";
 const productionOrigin = "https://validate-delivery-portal.vercel.app";
+const supabaseUrl = "https://axvnifoamejuxxqhezwr.supabase.co";
+const supabasePublishableKey = "sb_publishable_IFOVI5nvp8DdOeqAs4lNsg__Iewd4BN";
+const firstAdminEmail = "henry@createwithvalidate.com";
 const state = loadState();
 state.session ??= null;
 state.clientAccount ??= null;
@@ -31,6 +34,9 @@ const dashboardHero = document.querySelector("#dashboardHero");
 const loginForm = document.querySelector("#loginForm");
 const loginSubmit = document.querySelector("#loginSubmit");
 const passwordField = document.querySelector("#passwordField");
+const nameField = document.querySelector("#nameField");
+const inviteCodeField = document.querySelector("#inviteCodeField");
+const authModeToggle = document.querySelector("#authModeToggle");
 const accessCodeField = document.querySelector("#accessCodeField");
 const adminAccess = document.querySelector("#adminAccess");
 const sessionLabel = document.querySelector("#sessionLabel");
@@ -43,6 +49,7 @@ const toast = document.querySelector("#toast");
 let route = "clients";
 let createIntent = "client";
 let loginRole = "client";
+let authMode = "signin";
 let reelKeepalive = null;
 let backgroundRotation = null;
 let dashboardBackgroundRotation = null;
@@ -66,6 +73,7 @@ const testClientAccounts = [
     },
   },
 ];
+let supabaseClient = null;
 
 function apiUrl(path) {
   const isLocalPreview =
@@ -94,6 +102,38 @@ function saveState() {
   } catch {
     showToast("Browser storage is unavailable");
   }
+}
+
+function getSupabase() {
+  if (supabaseClient) return supabaseClient;
+  if (!window.supabase?.createClient) return null;
+  supabaseClient = window.supabase.createClient(supabaseUrl, supabasePublishableKey);
+  return supabaseClient;
+}
+
+async function signInWithSupabase(email, password) {
+  const client = getSupabase();
+  if (!client) return null;
+  const { data, error } = await client.auth.signInWithPassword({ email, password });
+  if (error) throw error;
+  return data?.user || null;
+}
+
+async function createInviteAccount({ email, password, fullName, inviteCode }) {
+  const client = getSupabase();
+  if (!client) throw new Error("Supabase is still loading. Try again in a moment.");
+  const { data, error } = await client.auth.signUp({
+    email,
+    password,
+    options: {
+      data: {
+        full_name: fullName,
+        invite_code: inviteCode,
+      },
+    },
+  });
+  if (error) throw error;
+  return data?.user || null;
 }
 
 function cleanupOldTestClientData() {
@@ -271,6 +311,8 @@ function setRoute(nextRoute) {
 
 function setLoginRole(nextRole) {
   loginRole = nextRole;
+  authMode = "signin";
+  setAuthMode(authMode);
 
   const isAdmin = loginRole === "admin";
   passwordField.hidden = false;
@@ -292,12 +334,94 @@ function setLoginRole(nextRole) {
     : "Sign in to your review dashboard to see projects, versions, notes, and approvals.";
 }
 
-function completeLogin() {
+function setAuthMode(nextMode) {
+  authMode = nextMode;
+  const isCreate = authMode === "signup";
+  if (nameField) nameField.hidden = !isCreate;
+  if (inviteCodeField) inviteCodeField.hidden = !isCreate;
+  if (authModeToggle) authModeToggle.textContent = isCreate ? "Back to sign in" : "Create account from invite";
+  loginSubmit.textContent =
+    isCreate
+      ? "Create account"
+      : loginRole === "admin"
+        ? "Sign in as admin"
+        : "Sign in";
+  document.querySelector(".login-panel .eyebrow").textContent = isCreate
+    ? "Invite-only beta"
+    : loginRole === "admin"
+      ? "Admin delivery portal"
+      : "Client review portal";
+  document.querySelector(".login-panel h1").textContent = isCreate
+    ? "Create review account."
+    : loginRole === "admin"
+      ? "Manage delivery."
+      : "Review the latest cut.";
+  document.querySelector(".login-copy").textContent = isCreate
+    ? "Create your account from an invitation. Projects appear after Validate sends a review."
+    : loginRole === "admin"
+      ? "Manage clients, projects, video versions, notes, notifications, and approvals from one clean workspace."
+      : "Sign in to your review dashboard to see projects, versions, notes, and approvals.";
+}
+
+async function completeSignup(form) {
+  const email = String(form.get("email") || "").trim();
+  const password = String(form.get("password") || "").trim();
+  const fullName = String(form.get("fullName") || "").trim();
+  const inviteCode = String(form.get("inviteCode") || "").trim();
+  if (!email || !password || !fullName || !inviteCode) {
+    showToast("Name, email, password, and invite code are required");
+    return;
+  }
+
+  await createInviteAccount({ email, password, fullName, inviteCode });
+  showToast("Account created. Check email if confirmation is required.");
+  setAuthMode("signin");
+}
+
+async function completeLogin() {
   const form = new FormData(loginForm);
+  if (authMode === "signup") {
+    try {
+      await completeSignup(form);
+    } catch (error) {
+      showToast(error.message || "Account could not be created");
+    }
+    return;
+  }
+
   const role = loginRole === "client" ? "client" : "admin";
+  const email = String(form.get("email") || "").trim();
+  const password = String(form.get("password") || "").trim();
 
   if (role === "client") {
-    const account = findTestClientAccount(form.get("email"), form.get("password"));
+    const account = findTestClientAccount(email, password);
+    try {
+      const user = await signInWithSupabase(email, password);
+      if (user) {
+        state.session = {
+          role,
+          email: user.email,
+        };
+        state.mode = role;
+        state.clientAccount = {
+          ...testClientAccounts[0].client,
+          email: user.email,
+          contact: user.user_metadata?.full_name || user.email,
+          name: user.user_metadata?.company_name || "Client Account",
+        };
+        route = "clients";
+        saveState();
+        showToast("Signed in");
+        render();
+        return;
+      }
+    } catch (error) {
+      if (!account) {
+        showToast(error.message || "Email or password did not match");
+        return;
+      }
+    }
+
     if (!account) {
       showToast("Email or password did not match");
       return;
@@ -316,9 +440,30 @@ function completeLogin() {
     return;
   }
 
+  try {
+    const user = await signInWithSupabase(email, password);
+    if (user) {
+      state.session = {
+        role,
+        email: user.email,
+      };
+      state.mode = role;
+      route = "clients";
+      saveState();
+      showToast(`Signed in as ${role}`);
+      render();
+      return;
+    }
+  } catch (error) {
+    if (email && email !== firstAdminEmail) {
+      showToast(error.message || "Admin sign-in failed");
+      return;
+    }
+  }
+
   state.session = {
     role,
-    email: form.get("email") || (role === "admin" ? "admin@createwithvalidate.com" : "client@example.com"),
+    email: email || firstAdminEmail,
   };
   state.mode = role;
   route = "clients";
@@ -1217,6 +1362,9 @@ loginForm.addEventListener("submit", (event) => {
   completeLogin();
 });
 loginSubmit.addEventListener("click", completeLogin);
+authModeToggle?.addEventListener("click", () => {
+  setAuthMode(authMode === "signup" ? "signin" : "signup");
+});
 
 document.querySelector("#openCreate").addEventListener("click", () => openDialog());
 document.querySelector("#closeDialog").addEventListener("click", () => dialog.close());
