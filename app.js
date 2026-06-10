@@ -335,53 +335,64 @@ async function loadPortalDataFromSupabase() {
 }
 
 async function loadClientPortalDataFromSupabase(client) {
-  const [clientsResult, accessResult] = await Promise.all([
-    client.from("clients").select("*").order("created_at", { ascending: false }),
+  const accessResult = await withTimeout(
     client.from("project_access").select("project_id,email").order("granted_at", { ascending: false }),
-  ]);
-
-  if (clientsResult.error || accessResult.error) {
-    throw clientsResult.error || accessResult.error;
-  }
+    "Could not load project invites. Please retry.",
+    7000,
+  );
+  if (accessResult.error) throw accessResult.error;
 
   const projectIds = [...new Set((accessResult.data || []).map((row) => row.project_id).filter(Boolean))];
 
+  let clientsResult = { data: [], error: null };
   let projectsResult = { data: [], error: null };
   let videosResult = { data: [], error: null };
   let versionsResult = { data: [], error: null };
   let commentsResult = { data: [], error: null };
 
   if (projectIds.length) {
-    projectsResult = await client
-      .from("projects")
-      .select("*")
-      .in("id", projectIds)
-      .order("created_at", { ascending: false });
+    projectsResult = await withTimeout(
+      client.from("projects").select("*").in("id", projectIds).order("created_at", { ascending: false }),
+      "Could not load invited projects. Please retry.",
+      7000,
+    );
     if (projectsResult.error) throw projectsResult.error;
 
-    videosResult = await client
-      .from("videos")
-      .select("*")
-      .in("project_id", projectIds)
-      .order("created_at", { ascending: false });
+    const clientIds = [...new Set((projectsResult.data || []).map((row) => row.client_id).filter(Boolean))];
+    if (clientIds.length) {
+      clientsResult = await withTimeout(
+        client.from("clients").select("*").in("id", clientIds).order("created_at", { ascending: false }),
+        "Client details are taking too long.",
+        2500,
+      ).catch((error) => {
+        console.warn("Client detail load skipped", error);
+        return { data: [], error: null };
+      });
+    }
+
+    videosResult = await withTimeout(
+      client.from("videos").select("*").in("project_id", projectIds).order("created_at", { ascending: false }),
+      "Could not load project videos. Please retry.",
+      7000,
+    );
     if (videosResult.error) throw videosResult.error;
 
     const videoIds = [...new Set((videosResult.data || []).map((row) => row.id).filter(Boolean))];
     if (videoIds.length) {
-      versionsResult = await client
-        .from("video_versions")
-        .select("*")
-        .in("video_id", videoIds)
-        .order("created_at", { ascending: false });
+      versionsResult = await withTimeout(
+        client.from("video_versions").select("*").in("video_id", videoIds).order("created_at", { ascending: false }),
+        "Could not load video versions. Please retry.",
+        7000,
+      );
       if (versionsResult.error) throw versionsResult.error;
 
       const versionIds = [...new Set((versionsResult.data || []).map((row) => row.id).filter(Boolean))];
       if (versionIds.length) {
-        commentsResult = await client
-          .from("comments")
-          .select("*")
-          .in("version_id", versionIds)
-          .order("created_at", { ascending: false });
+        commentsResult = await withTimeout(
+          client.from("comments").select("*").in("version_id", versionIds).order("created_at", { ascending: false }),
+          "Could not load comments. Please retry.",
+          7000,
+        );
         if (commentsResult.error) throw commentsResult.error;
       }
     }
@@ -389,6 +400,17 @@ async function loadClientPortalDataFromSupabase(client) {
 
   state.clients = (clientsResult.data || []).map(mapClientRow);
   state.projects = (projectsResult.data || []).map(mapProjectRow);
+  if (!state.clients.length && state.projects.length) {
+    const fallbackClientIds = [...new Set(state.projects.map((project) => project.clientId).filter(Boolean))];
+    state.clients = fallbackClientIds.map((clientId) => ({
+      id: clientId,
+      name: state.clientAccount?.name || "Client workspace",
+      contact: state.clientAccount?.contact || state.session?.email || "Client",
+      email: state.session?.email || "",
+      summary: "Projects sent to this account.",
+      archived: false,
+    }));
+  }
   state.videos = (videosResult.data || []).map(mapVideoRow);
   state.versions = (versionsResult.data || []).map(mapVersionRow);
   state.comments = (commentsResult.data || []).map(mapCommentRow);
@@ -402,17 +424,10 @@ async function refreshPortalData({ openHash = false, showMissingMessage = false 
   try {
     await withTimeout(
       (async () => {
-        const client = getSupabase();
-        const { data: sessionData } = client ? await client.auth.getSession() : { data: {} };
-        const user = sessionData?.session?.user;
-        if (user) {
-          const profile = await getCurrentProfile(user);
-          applyAccountSession(user, profile);
-        }
         await loadPortalDataFromSupabase();
       })(),
       "Workspace is taking too long to load. Please try again.",
-      9000,
+      12000,
     );
     lastPortalFingerprint = portalFingerprint();
     saveState();
