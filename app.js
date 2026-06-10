@@ -289,6 +289,22 @@ function mapCommentRow(row) {
   };
 }
 
+function applyPortalRows({ clients = [], projects = [], videos = [], versions = [], comments = [], deliveredProjectIds = [] }) {
+  state.clients = clients.map(mapClientRow);
+  state.projects = projects.map(mapProjectRow);
+  state.videos = videos.map(mapVideoRow);
+  state.versions = versions.map(mapVersionRow);
+  state.comments = comments.map(mapCommentRow);
+  state.deliveredProjectIds = [...new Set(deliveredProjectIds)];
+}
+
+async function supabaseAccessToken() {
+  const client = getSupabase();
+  if (!client) return "";
+  const { data } = await client.auth.getSession();
+  return data?.session?.access_token || "";
+}
+
 async function loadPortalDataFromSupabase() {
   const client = getSupabase();
   if (!client) return false;
@@ -323,18 +339,60 @@ async function loadPortalDataFromSupabase() {
     accessResult.error;
   if (error) throw error;
 
-  state.clients = (clientsResult.data || []).map(mapClientRow);
-  state.projects = (projectsResult.data || []).map(mapProjectRow);
-  state.videos = (videosResult.data || []).map(mapVideoRow);
-  state.versions = (versionsResult.data || []).map(mapVersionRow);
-  state.comments = (commentsResult.data || []).map(mapCommentRow);
-  state.deliveredProjectIds = [...new Set((accessResult.data || []).map((row) => row.project_id))];
+  applyPortalRows({
+    clients: clientsResult.data || [],
+    projects: projectsResult.data || [],
+    videos: videosResult.data || [],
+    versions: versionsResult.data || [],
+    comments: commentsResult.data || [],
+    deliveredProjectIds: (accessResult.data || []).map((row) => row.project_id),
+  });
+  state.portalLoading = false;
+  saveState();
+  return true;
+}
+
+async function loadClientPortalDataFromApi() {
+  const token = await supabaseAccessToken();
+  if (!token) throw new Error("Sign in again before loading the dashboard.");
+
+  const response = await withTimeout(
+    fetch(apiUrl("/api/client-portal"), {
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    }),
+    "Client dashboard service took too long. Retrying with browser loading.",
+    9000,
+  );
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || "Client dashboard could not load.");
+
+  applyPortalRows(result);
+  if (!state.clients.length && state.projects.length) {
+    const fallbackClientIds = [...new Set(state.projects.map((project) => project.clientId).filter(Boolean))];
+    state.clients = fallbackClientIds.map((clientId) => ({
+      id: clientId,
+      name: state.clientAccount?.name || "Client workspace",
+      contact: state.clientAccount?.contact || state.session?.email || "Client",
+      email: state.session?.email || "",
+      summary: "Projects sent to this account.",
+      archived: false,
+    }));
+  }
   state.portalLoading = false;
   saveState();
   return true;
 }
 
 async function loadClientPortalDataFromSupabase(client) {
+  try {
+    return await loadClientPortalDataFromApi();
+  } catch (error) {
+    console.warn("Client portal API load failed, falling back to browser Supabase", error);
+  }
+
   const accessResult = await withTimeout(
     client.from("project_access").select("project_id,email").order("granted_at", { ascending: false }),
     "Could not load project invites. Please retry.",
@@ -543,7 +601,7 @@ async function persistPortalDataToSupabase() {
         const project = state.projects.find((item) => item.id === projectId);
         const clientRecord = state.clients.find((item) => item.id === project?.clientId);
         if (!clientRecord?.email) return null;
-        return { project_id: projectId, email: clientRecord.email };
+        return { project_id: projectId, email: clientRecord.email.trim().toLowerCase() };
       })
       .filter(Boolean);
     if (accessRows.length) {
@@ -1928,7 +1986,7 @@ async function handleCreateFormSubmit(event) {
         id: `${slug(name) || "client"}-${nowId}`,
         name,
         contact: form.get("contact") || "Primary contact",
-        email: form.get("email") || "",
+        email: String(form.get("email") || "").trim().toLowerCase(),
         summary: form.get("summary") || "New client workspace.",
         archived: false,
       });
