@@ -39,7 +39,6 @@ const authModeToggle = document.querySelector("#authModeToggle");
 const accessCodeField = document.querySelector("#accessCodeField");
 const adminAccess = document.querySelector("#adminAccess");
 const sessionLabel = document.querySelector("#sessionLabel");
-const syncDataButton = document.querySelector("#syncData");
 const dialog = document.querySelector("#createDialog");
 const dialogTitle = document.querySelector("#dialogTitle");
 const dialogFields = document.querySelector("#dialogFields");
@@ -484,7 +483,6 @@ function updateAuthView() {
   startDashboardBackgroundRotation();
 
   sessionLabel.textContent = "";
-  if (syncDataButton) syncDataButton.hidden = !isLoggedIn;
   document.querySelector("#openCreate").hidden = state.session.role !== "admin" || state.mode === "client";
 }
 
@@ -1735,9 +1733,6 @@ authModeToggle?.addEventListener("click", () => {
 });
 
 document.querySelector("#openCreate").addEventListener("click", () => openDialog());
-syncDataButton?.addEventListener("click", () => {
-  syncPortalData({ announce: true, rerender: true });
-});
 document.querySelector("#closeDialog").addEventListener("click", () => dialog.close());
 document.querySelector("#cancelDialog").addEventListener("click", () => dialog.close());
 document.querySelector("#signOut").addEventListener("click", async () => {
