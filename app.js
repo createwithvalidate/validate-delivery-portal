@@ -47,6 +47,7 @@ const createForm = document.querySelector("#createForm");
 const toast = document.querySelector("#toast");
 
 let route = "clients";
+let currentView = "clients";
 let createIntent = "client";
 let loginRole = "client";
 let authMode = "signin";
@@ -440,7 +441,7 @@ async function syncPortalData({ announce = false, rerender = true } = {}) {
       ? previousSelection.selectedVideoId
       : state.videos.find((video) => video.projectId === state.selectedProjectId)?.id || "";
     saveState();
-    if (rerender) render();
+    if (rerender) renderCurrentView();
     if (announce) showToast("Synced");
     return true;
   } catch (error) {
@@ -485,6 +486,26 @@ function updateAuthView() {
   sessionLabel.textContent = "";
   if (syncDataButton) syncDataButton.hidden = !isLoggedIn;
   document.querySelector("#openCreate").hidden = state.session.role !== "admin" || state.mode === "client";
+}
+
+function renderCurrentView() {
+  if (!state.session) {
+    render();
+    return;
+  }
+
+  if (state.mode === "client") {
+    if (currentView === "clientReview" && state.selectedVideoId) renderClientReview();
+    else renderClientDashboard();
+    return;
+  }
+
+  if (currentView === "adminReview" && state.selectedVideoId) renderAdminReview();
+  else if (currentView === "projectDetail" && state.selectedProjectId) renderProjectDetail();
+  else if (currentView === "projects" && state.selectedClientId) renderProjects();
+  else if (currentView === "activity") renderActivity();
+  else if (currentView === "settings") renderSettings();
+  else renderClients();
 }
 
 function startLoginBackgroundRotation() {
@@ -967,6 +988,7 @@ function render() {
 }
 
 function renderClients() {
+  currentView = "clients";
   dashboardHero.hidden = false;
   setPageHeader("Clients");
   document.querySelector("#openCreate").textContent = "New client";
@@ -1025,6 +1047,7 @@ function renderClients() {
 }
 
 function renderProjects() {
+  currentView = "projects";
   dashboardHero.hidden = true;
   const client = activeClient();
   if (!client) {
@@ -1114,6 +1137,7 @@ function renderProjects() {
 }
 
 function renderProjectDetail() {
+  currentView = "projectDetail";
   dashboardHero.hidden = true;
   const project = activeProject();
   if (!project) {
@@ -1196,10 +1220,12 @@ function renderProjectDetail() {
 }
 
 function renderAdminReview() {
+  currentView = "adminReview";
   renderReviewShell(true);
 }
 
 function renderClientDashboard() {
+  currentView = "clientDashboard";
   dashboardHero.hidden = true;
   const client = activeClientAccount();
   if (!client) {
@@ -1297,10 +1323,12 @@ function renderClientDashboard() {
 }
 
 function renderClientReview() {
+  currentView = "clientReview";
   renderReviewShell(false);
 }
 
 function renderReviewShell(isAdmin) {
+  currentView = isAdmin ? "adminReview" : "clientReview";
   dashboardHero.hidden = true;
   const video = activeVideo();
   if (!video) {
@@ -1454,6 +1482,7 @@ function renderReviewShell(isAdmin) {
 }
 
 function renderActivity() {
+  currentView = "activity";
   dashboardHero.hidden = true;
   setPageHeader("Activity");
   document.querySelector("#openCreate").textContent = "New client";
@@ -1470,6 +1499,7 @@ function renderActivity() {
 }
 
 function renderSettings() {
+  currentView = "settings";
   dashboardHero.hidden = true;
   setPageHeader("Settings");
   document.querySelector("#openCreate").textContent = "New client";
