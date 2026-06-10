@@ -1028,59 +1028,95 @@ function updateStats() {
     `${state.versions.filter((version) => version.approved).length} approved`;
 }
 
-async function sendLatestToClient(button) {
-  const client = activeClient();
-  const project = activeProject();
-  const video = activeVideo();
-  const version = latestVersion(video?.id);
-
+async function emailProjectClient({ client, project, video, version, emailType = "version" }) {
   if (!client?.email) {
-    showToast("Add a client email before sending");
-    return;
+    throw new Error("Add a client email before sending");
   }
 
-  if (!project || !video || !version) {
-    showToast("Add a video version before sending");
-    return;
+  if (!project) {
+    throw new Error("Open a project before sending");
   }
 
   const reviewUrl = `${location.origin}${location.pathname}#review/${project.id}`;
+  const response = await fetch(apiUrl("/api/send-review-email"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      emailType,
+      clientEmail: client.email,
+      clientName: client.contact || client.name,
+      projectName: project.name,
+      videoTitle: video?.title || project.name,
+      versionLabel: version?.label || "Project invite",
+      versionNote:
+        version?.note ||
+        (emailType === "invite"
+          ? "Sign in to your Validate review dashboard to see this project."
+          : "A new review version is ready."),
+      reviewUrl,
+      senderEmail: state.session?.email,
+      senderName: state.session?.email || "Validate",
+    }),
+  });
+
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || "Email could not be sent");
+  return result;
+}
+
+async function inviteProjectClient(button) {
+  const client = activeClient();
+  const project = activeProject();
+
+  if (!client?.email) {
+    showToast("Add a client email before inviting");
+    return;
+  }
+
+  if (!project) {
+    showToast("Open a project before inviting");
+    return;
+  }
+
   const originalText = button.textContent;
   button.disabled = true;
-  button.textContent = "Saving access...";
+  button.textContent = "Saving invite...";
 
   try {
     if (!state.deliveredProjectIds.includes(project.id)) state.deliveredProjectIds.push(project.id);
     await savePortalData();
 
-    button.textContent = "Sending...";
-    const response = await fetch(apiUrl("/api/send-review-email"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        clientEmail: client.email,
-        clientName: client.contact || client.name,
-        projectName: project.name,
-        videoTitle: video.title,
-        versionLabel: version.label,
-        versionNote: version.note,
-        reviewUrl,
-        senderEmail: state.session?.email,
-      }),
+    button.textContent = "Sending invite...";
+    const video = projectVideos(project.id)[0];
+    await emailProjectClient({
+      client,
+      project,
+      video,
+      version: video ? latestVersion(video.id) : null,
+      emailType: "invite",
     });
 
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(result.error || "Email could not be sent");
-
-    state.activity.unshift(`Sent ${version.label} for ${video.title} to ${client.email}`);
+    state.activity.unshift(`Invited ${client.email} to ${project.name}`);
     await savePortalData();
-    showToast("Client email sent");
+    showToast("Project invite sent");
+    renderProjectDetail();
   } catch (error) {
     showToast(error.message);
   } finally {
     button.disabled = false;
     button.textContent = originalText;
   }
+}
+
+async function notifyClientOfNewVersion({ project, video, version }) {
+  const client = state.clients.find((item) => item.id === project?.clientId);
+  if (!client?.email || !project || !video || !version) return false;
+  if (!state.deliveredProjectIds.includes(project.id)) return false;
+
+  await emailProjectClient({ client, project, video, version, emailType: "version" });
+  state.activity.unshift(`Notified ${client.email} about ${version.label} for ${video.title}`);
+  await savePortalData();
+  return true;
 }
 
 async function createBunnyUploadCredentials({ title }) {
@@ -1359,14 +1395,13 @@ function renderProjectDetail() {
 
   const client = state.clients.find((item) => item.id === project.clientId);
   const videos = state.videos.filter((video) => video.projectId === project.id);
-  const latestVideo = videos[0];
-  const latest = latestVideo ? latestVersion(latestVideo.id) : null;
-  const canSend = Boolean(client?.email && latestVideo && latest);
+  const isInvited = state.deliveredProjectIds.includes(project.id);
+  const canInvite = Boolean(client?.email);
   const sendStatus = !client?.email
-    ? "Add a client email before sending."
-    : latest
-      ? `${latest.label} is ready for ${client.email}`
-      : "Upload a review version before emailing the client.";
+    ? "Add a client email before inviting."
+    : isInvited
+      ? `${client.email} can see this project. New versions will email automatically.`
+      : `Invite ${client.email} to add this project to their dashboard.`;
   setPageHeader(project.name);
   document.querySelector("#openCreate").textContent = "Add video";
   createIntent = "video";
@@ -1405,14 +1440,14 @@ function renderProjectDetail() {
       </section>
       <aside class="panel stack">
         <p class="eyebrow">Delivery actions</p>
-        <div class="action-status ${canSend ? "ready" : ""}">
-          <strong>${canSend ? "Ready to send" : "Needs attention"}</strong>
+        <div class="action-status ${canInvite ? "ready" : ""}">
+          <strong>${isInvited ? "Project invited" : canInvite ? "Ready to invite" : "Needs attention"}</strong>
           <span>${sendStatus}</span>
         </div>
-        <button class="primary-button" id="sendClient" ${canSend ? "" : "disabled"}>Send latest to client</button>
+        <button class="primary-button" id="sendClient" ${canInvite ? "" : "disabled"}>${isInvited ? "Resend project invite" : "Invite client to project"}</button>
         <button class="ghost-button" id="addVersion">Upload new version</button>
         <button class="ghost-button" id="backProjects">Back to client</button>
-        <p class="muted">Uploads route through Bunny Stream when you choose an MP4. Embed links still work for Vimeo or other hosted cuts.</p>
+        <p class="muted">After a project is invited, new uploaded versions automatically email the client.</p>
       </aside>
     </div>
   `;
@@ -1425,7 +1460,7 @@ function renderProjectDetail() {
     });
   });
   root.querySelector("#sendClient").addEventListener("click", (event) => {
-    sendLatestToClient(event.currentTarget);
+    inviteProjectClient(event.currentTarget);
   });
   root.querySelector("#addVersion").addEventListener("click", () => openDialog("version"));
   root.querySelector("#backProjects").addEventListener("click", renderProjects);
@@ -1842,6 +1877,7 @@ async function handleCreateFormSubmit(event) {
   };
   saveButton.disabled = true;
   const uploadsVideo = createIntent === "version" || createIntent === "video";
+  let pendingVersionNotice = null;
   saveButton.textContent = uploadsVideo ? "Starting upload..." : "Saving...";
   showToast(uploadsVideo ? "Starting upload..." : "Saving...");
   syncPaused = true;
@@ -1901,7 +1937,7 @@ async function handleCreateFormSubmit(event) {
       }
 
       if (embedUrl.trim() || bunnyVideoId) {
-        state.versions.unshift({
+        const version = {
           id: `version-${nowId}`,
           videoId,
           label,
@@ -1911,7 +1947,13 @@ async function handleCreateFormSubmit(event) {
           note: form.get("note") || "New review version.",
           createdAt: "Just now",
           approved: false,
-        });
+        };
+        state.versions.unshift(version);
+        pendingVersionNotice = {
+          project: activeProject(),
+          video,
+          version,
+        };
       }
     }
 
@@ -1955,7 +1997,7 @@ async function handleCreateFormSubmit(event) {
         bunnyVideoId = upload.videoId;
       }
 
-      state.versions.unshift({
+      const version = {
         id: `version-${nowId}`,
         videoId: video.id,
         label,
@@ -1965,15 +2007,29 @@ async function handleCreateFormSubmit(event) {
         note: form.get("note") || "New review version.",
         createdAt: "Just now",
         approved: false,
-      });
+      };
+      state.versions.unshift(version);
       state.selectedVideoId = video.id;
+      pendingVersionNotice = {
+        project,
+        video,
+        version,
+      };
     }
 
     saveButton.textContent = "Saving version...";
     await saveAndReloadPortalData();
+    let notifiedClient = false;
+    if (pendingVersionNotice) {
+      saveButton.textContent = "Checking invite...";
+      if (state.deliveredProjectIds.includes(pendingVersionNotice.project?.id)) {
+        saveButton.textContent = "Emailing client...";
+        notifiedClient = await notifyClientOfNewVersion(pendingVersionNotice);
+      }
+    }
     dialog.close();
     createForm.reset();
-    showToast(uploadsVideo ? "Video saved" : "Saved");
+    showToast(notifiedClient ? "Video saved and client emailed" : uploadsVideo ? "Video saved" : "Saved");
     if (createIntent === "project") renderProjects();
     else if (createIntent === "video") renderProjectDetail();
     else if (createIntent === "version") renderReviewShell(state.mode === "admin");
