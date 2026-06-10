@@ -77,6 +77,14 @@ function apiUrl(path) {
   return `${isLocalPreview ? productionOrigin : ""}${path}`;
 }
 
+function withTimeout(promise, message = "Request took too long", timeoutMs = 9000) {
+  let timeoutId;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = window.setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+  return Promise.race([promise, timeout]).finally(() => window.clearTimeout(timeoutId));
+}
+
 function loadState() {
   try {
     if (new URLSearchParams(window.location.search).has("reset")) {
@@ -392,14 +400,20 @@ async function loadClientPortalDataFromSupabase(client) {
 
 async function refreshPortalData({ openHash = false, showMissingMessage = false } = {}) {
   try {
-    const client = getSupabase();
-    const { data: sessionData } = client ? await client.auth.getSession() : { data: {} };
-    const user = sessionData?.session?.user;
-    if (user) {
-      const profile = await getCurrentProfile(user);
-      applyAccountSession(user, profile);
-    }
-    await loadPortalDataFromSupabase();
+    await withTimeout(
+      (async () => {
+        const client = getSupabase();
+        const { data: sessionData } = client ? await client.auth.getSession() : { data: {} };
+        const user = sessionData?.session?.user;
+        if (user) {
+          const profile = await getCurrentProfile(user);
+          applyAccountSession(user, profile);
+        }
+        await loadPortalDataFromSupabase();
+      })(),
+      "Workspace is taking too long to load. Please try again.",
+      9000,
+    );
     lastPortalFingerprint = portalFingerprint();
     saveState();
     render();
@@ -1221,7 +1235,17 @@ function render() {
     dashboardHero.hidden = true;
     setPageHeader(state.mode === "admin" ? "Loading workspace" : "Loading review");
     document.querySelector("#openCreate").hidden = true;
-    root.innerHTML = `<div class="empty">Loading saved workspace...</div>`;
+    root.innerHTML = `
+      <div class="empty">
+        Loading saved workspace...
+        <div class="modal-actions inline-retry">
+          <button class="ghost-button" type="button" id="retryWorkspaceLoad">Retry</button>
+        </div>
+      </div>
+    `;
+    root.querySelector("#retryWorkspaceLoad")?.addEventListener("click", () => {
+      refreshPortalData({ openHash: true, showMissingMessage: true });
+    });
     return;
   }
 

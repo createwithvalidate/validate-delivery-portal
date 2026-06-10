@@ -1221,6 +1221,11 @@ label {
   text-align: center;
 }
 
+.inline-retry {
+  justify-content: center;
+  margin-top: 16px;
+}
+
 .compact-empty {
   padding: 18px;
   background: rgba(255, 255, 255, 0.018);
