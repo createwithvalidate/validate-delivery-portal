@@ -1174,10 +1174,8 @@ function setHeroMode(mode, projects = []) {
   dashboardHero.hidden = false;
   dashboardHero.classList.toggle("client-hero", isClient);
   dashboardHero.classList.toggle("admin-hero", !isClient);
-  heroEyebrow.textContent = isClient ? "Your review workspace" : "Delivery control";
-  heroHeadline.textContent = isClient
-    ? "Open each project, review the latest cut, and keep notes in one place."
-    : "Manage clients, projects, invites, and approvals from one clean workspace.";
+  heroEyebrow.textContent = isClient ? "Client review" : "Delivery control";
+  heroHeadline.textContent = isClient ? "Projects" : "Manage clients, projects, invites, and approvals from one clean workspace.";
   document.querySelector("#heroClientCount").textContent = isClient
     ? `${projects.length} projects`
     : `${state.clients.length} clients`;
@@ -1699,16 +1697,6 @@ function renderClientDashboard() {
 
   root.innerHTML = `
     <section class="workspace-panel">
-      <div class="workspace-head">
-        <div>
-          <h2>Projects</h2>
-          <p class="muted">Open a project to watch versions, leave notes, and approve the final cut when it is ready.</p>
-        </div>
-        <div class="workspace-stats">
-          <span>${projects.length} projects</span>
-          <span>${projects.reduce((total, project) => total + projectVersionCount(project.id), 0)} versions</span>
-        </div>
-      </div>
       <div class="${projects.length ? "grid" : "project-list"}">
         ${
           projects.length
