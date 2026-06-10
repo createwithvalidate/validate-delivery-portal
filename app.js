@@ -463,7 +463,6 @@ function renderProjects() {
     <section class="workspace-panel">
       <div class="workspace-head">
         <div>
-          <p class="eyebrow">Projects</p>
           <h2>Projects</h2>
           <p class="muted">${client.summary}</p>
         </div>
