@@ -222,6 +222,30 @@ create policy "clients_read_accessible_versions" on video_versions
     )
   );
 
+create policy "clients_approve_accessible_versions" on video_versions
+  for update using (
+    public.is_admin()
+    or exists (
+      select 1 from videos v
+      join projects p on p.id = v.project_id
+      join project_access pa on pa.project_id = p.id
+      join profiles pr on pr.id = auth.uid()
+      where video_versions.video_id = v.id
+        and lower(pa.email) = lower(pr.email)
+    )
+  )
+  with check (
+    public.is_admin()
+    or exists (
+      select 1 from videos v
+      join projects p on p.id = v.project_id
+      join project_access pa on pa.project_id = p.id
+      join profiles pr on pr.id = auth.uid()
+      where video_versions.video_id = v.id
+        and lower(pa.email) = lower(pr.email)
+    )
+  );
+
 create policy "read_accessible_comments" on comments
   for select using (
     public.is_admin()
@@ -262,3 +286,9 @@ create policy "clients_read_own_project_access" on project_access
 insert into invites (email, code, role)
 values ('henry@createwithvalidate.com', 'VALIDATE-ADMIN-BETA', 'admin')
 on conflict (code) do nothing;
+
+insert into profiles (id, email, full_name, role)
+select id, email, coalesce(raw_user_meta_data->>'full_name', 'Henry'), 'admin'
+from auth.users
+where lower(email) = 'henry@createwithvalidate.com'
+on conflict (id) do update set role = 'admin';

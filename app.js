@@ -136,6 +136,211 @@ async function createInviteAccount({ email, password, fullName, inviteCode }) {
   return data?.user || null;
 }
 
+function mapClientRow(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    contact: row.contact || "",
+    email: row.email || "",
+    summary: row.summary || "",
+    archived: Boolean(row.archived),
+  };
+}
+
+function mapProjectRow(row) {
+  return {
+    id: row.id,
+    clientId: row.client_id,
+    name: row.name,
+    description: row.description || "",
+    status: row.status || "review",
+    archived: Boolean(row.archived),
+  };
+}
+
+function mapVideoRow(row) {
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    title: row.title,
+    status: row.status || "draft",
+    due: row.due || "Soon",
+  };
+}
+
+function mapVersionRow(row) {
+  return {
+    id: row.id,
+    videoId: row.video_id,
+    label: row.label,
+    provider: row.provider || "Bunny Stream",
+    embedUrl: row.embed_url || "",
+    bunnyVideoId: row.bunny_video_id || "",
+    note: row.note || "",
+    createdAt: row.created_at_label || "Just now",
+    approved: Boolean(row.approved),
+  };
+}
+
+function mapCommentRow(row) {
+  return {
+    id: row.id,
+    versionId: row.version_id,
+    author: row.author,
+    role: row.role,
+    body: row.body,
+    createdAt: row.created_at_label || "Just now",
+  };
+}
+
+async function loadPortalDataFromSupabase() {
+  const client = getSupabase();
+  if (!client) return false;
+  const { data: userData } = await client.auth.getUser();
+  if (!userData?.user) return false;
+
+  const [
+    clientsResult,
+    projectsResult,
+    videosResult,
+    versionsResult,
+    commentsResult,
+    accessResult,
+  ] = await Promise.all([
+    client.from("clients").select("*").order("created_at", { ascending: false }),
+    client.from("projects").select("*").order("created_at", { ascending: false }),
+    client.from("videos").select("*").order("created_at", { ascending: false }),
+    client.from("video_versions").select("*").order("created_at", { ascending: false }),
+    client.from("comments").select("*").order("created_at", { ascending: false }),
+    client.from("project_access").select("*"),
+  ]);
+
+  const error =
+    clientsResult.error ||
+    projectsResult.error ||
+    videosResult.error ||
+    versionsResult.error ||
+    commentsResult.error ||
+    accessResult.error;
+  if (error) throw error;
+
+  state.clients = (clientsResult.data || []).map(mapClientRow);
+  state.projects = (projectsResult.data || []).map(mapProjectRow);
+  state.videos = (videosResult.data || []).map(mapVideoRow);
+  state.versions = (versionsResult.data || []).map(mapVersionRow);
+  state.comments = (commentsResult.data || []).map(mapCommentRow);
+  state.deliveredProjectIds = [...new Set((accessResult.data || []).map((row) => row.project_id))];
+  saveState();
+  return true;
+}
+
+async function persistPortalDataToSupabase() {
+  const client = getSupabase();
+  if (!client) return false;
+  const { data: userData } = await client.auth.getUser();
+  if (!userData?.user) return false;
+
+  const operations = [];
+  if (state.clients.length) {
+    operations.push(
+      client.from("clients").upsert(
+        state.clients.map((item) => ({
+          id: item.id,
+          name: item.name,
+          contact: item.contact || null,
+          email: item.email || null,
+          summary: item.summary || null,
+          archived: Boolean(item.archived),
+        })),
+      ),
+    );
+  }
+  if (state.projects.length) {
+    operations.push(
+      client.from("projects").upsert(
+        state.projects.map((item) => ({
+          id: item.id,
+          client_id: item.clientId,
+          name: item.name,
+          description: item.description || null,
+          status: item.status || "review",
+          archived: Boolean(item.archived),
+        })),
+      ),
+    );
+  }
+  if (state.videos.length) {
+    operations.push(
+      client.from("videos").upsert(
+        state.videos.map((item) => ({
+          id: item.id,
+          project_id: item.projectId,
+          title: item.title,
+          status: item.status || "draft",
+          due: item.due || null,
+        })),
+      ),
+    );
+  }
+  if (state.versions.length) {
+    operations.push(
+      client.from("video_versions").upsert(
+        state.versions.map((item) => ({
+          id: item.id,
+          video_id: item.videoId,
+          label: item.label,
+          provider: item.provider || "Bunny Stream",
+          embed_url: item.embedUrl || null,
+          bunny_video_id: item.bunnyVideoId || null,
+          note: item.note || null,
+          created_at_label: item.createdAt || "Just now",
+          approved: Boolean(item.approved),
+        })),
+      ),
+    );
+  }
+  if (state.comments.length) {
+    operations.push(
+      client.from("comments").upsert(
+        state.comments.map((item) => ({
+          id: item.id,
+          version_id: item.versionId,
+          author: item.author,
+          role: item.role,
+          body: item.body,
+          created_at_label: item.createdAt || "Just now",
+        })),
+      ),
+    );
+  }
+  if (state.deliveredProjectIds.length) {
+    const accessRows = state.deliveredProjectIds
+      .map((projectId) => {
+        const project = state.projects.find((item) => item.id === projectId);
+        const clientRecord = state.clients.find((item) => item.id === project?.clientId);
+        if (!clientRecord?.email) return null;
+        return { project_id: projectId, email: clientRecord.email };
+      })
+      .filter(Boolean);
+    if (accessRows.length) operations.push(client.from("project_access").upsert(accessRows));
+  }
+
+  const results = await Promise.all(operations);
+  const error = results.find((result) => result.error)?.error;
+  if (error) throw error;
+  return true;
+}
+
+async function savePortalData() {
+  saveState();
+  try {
+    await persistPortalDataToSupabase();
+  } catch (error) {
+    console.warn("Supabase save failed", error);
+    showToast("Saved locally. Supabase did not save yet.");
+  }
+}
+
 function cleanupOldTestClientData() {
   const testClientIds = state.clients.filter((client) => client.id?.startsWith("test-")).map((client) => client.id);
   const testProjectIds = state.projects
@@ -410,6 +615,7 @@ async function completeLogin() {
           name: user.user_metadata?.company_name || "Client Account",
         };
         route = "clients";
+        await loadPortalDataFromSupabase();
         saveState();
         showToast("Signed in");
         render();
@@ -434,7 +640,7 @@ async function completeLogin() {
     };
     state.mode = role;
     route = "clients";
-    saveState();
+    await savePortalData();
     showToast(`Signed in as ${account.client.contact}`);
     render();
     return;
@@ -449,6 +655,7 @@ async function completeLogin() {
       };
       state.mode = role;
       route = "clients";
+      await loadPortalDataFromSupabase();
       saveState();
       showToast(`Signed in as ${role}`);
       render();
@@ -467,7 +674,7 @@ async function completeLogin() {
   };
   state.mode = role;
   route = "clients";
-  saveState();
+  await savePortalData();
   showToast(`Signed in as ${role}`);
   render();
 }
@@ -511,7 +718,7 @@ function projectVersionCount(projectId) {
   return projectVideos(projectId).reduce((total, video) => total + videoVersions(video.id).length, 0);
 }
 
-function deleteClient(clientId) {
+async function deleteClient(clientId) {
   const client = state.clients.find((item) => item.id === clientId);
   if (!client) return;
   const confirmed = window.confirm(`Delete ${client.name} and all of its projects?`);
@@ -531,6 +738,14 @@ function deleteClient(clientId) {
   if (videoIds.includes(state.selectedVideoId)) state.selectedVideoId = "";
   state.activity.unshift(`Deleted client ${client.name}`);
   saveState();
+  try {
+    const supabase = getSupabase();
+    const { data: userData } = supabase ? await supabase.auth.getUser() : { data: {} };
+    if (userData?.user) await supabase.from("clients").delete().eq("id", clientId);
+  } catch (error) {
+    console.warn("Supabase delete failed", error);
+    showToast("Deleted locally. Supabase did not delete yet.");
+  }
   showToast("Client deleted");
   renderClients();
 }
@@ -585,7 +800,7 @@ async function sendLatestToClient(button) {
 
     if (!state.deliveredProjectIds.includes(project.id)) state.deliveredProjectIds.push(project.id);
     state.activity.unshift(`Sent ${version.label} for ${video.title} to ${client.email}`);
-    saveState();
+    await savePortalData();
     showToast("Client email sent");
   } catch (error) {
     showToast(error.message);
@@ -813,10 +1028,10 @@ function renderProjects() {
   });
 
   root.querySelectorAll("[data-archive-project]").forEach((button) => {
-    button.addEventListener("click", () => {
+    button.addEventListener("click", async () => {
       const project = state.projects.find((item) => item.id === button.dataset.archiveProject);
       project.archived = true;
-      saveState();
+      await savePortalData();
       showToast("Project archived");
       renderProjects();
     });
@@ -1106,7 +1321,7 @@ function renderReviewShell(isAdmin) {
     </div>
   `;
 
-  root.querySelector("#commentForm").addEventListener("submit", (event) => {
+  root.querySelector("#commentForm").addEventListener("submit", async (event) => {
     event.preventDefault();
     const body = new FormData(event.currentTarget).get("body").trim();
     if (!body || !version) return;
@@ -1118,15 +1333,15 @@ function renderReviewShell(isAdmin) {
       body,
       createdAt: "Just now",
     });
-    saveState();
+    await savePortalData();
     renderReviewShell(isAdmin);
   });
 
-  root.querySelector("#approveVersion").addEventListener("click", () => {
+  root.querySelector("#approveVersion").addEventListener("click", async () => {
     if (!version) return;
     version.approved = true;
     video.status = "approved";
-    saveState();
+    await savePortalData();
     showToast("Version marked approved");
     renderReviewShell(isAdmin);
   });
@@ -1253,7 +1468,7 @@ createForm.addEventListener("submit", async (event) => {
     if (createIntent === "client") {
       const name = form.get("name") || "New Client";
       state.clients.push({
-        id: slug(name) || `client-${nowId}`,
+        id: `${slug(name) || "client"}-${nowId}`,
         name,
         contact: form.get("contact") || "Primary contact",
         email: form.get("email") || "",
@@ -1265,7 +1480,7 @@ createForm.addEventListener("submit", async (event) => {
     if (createIntent === "project") {
       const name = form.get("name") || "New Project";
       state.projects.unshift({
-        id: slug(name) || `project-${nowId}`,
+        id: `${slug(name) || "project"}-${nowId}`,
         clientId: activeClient().id,
         name,
         status: form.get("status") || "review",
@@ -1276,7 +1491,7 @@ createForm.addEventListener("submit", async (event) => {
 
     if (createIntent === "video") {
       const title = form.get("title") || "New Video";
-      const videoId = slug(title) || `video-${nowId}`;
+      const videoId = `${slug(title) || "video"}-${nowId}`;
       state.videos.unshift({
         id: videoId,
         projectId: activeProject().id,
@@ -1293,7 +1508,7 @@ createForm.addEventListener("submit", async (event) => {
       if (!video) {
         if (!project) throw new Error("Open a project before uploading");
         const title = project.name || "New Video";
-        const videoId = slug(title) || `video-${nowId}`;
+        const videoId = `${slug(title) || "video"}-${nowId}`;
         video = {
           id: videoId,
           projectId: project.id,
@@ -1334,7 +1549,7 @@ createForm.addEventListener("submit", async (event) => {
       });
     }
 
-    saveState();
+    await savePortalData();
     dialog.close();
     createForm.reset();
     showToast(createIntent === "version" ? "Version uploaded" : "Saved");

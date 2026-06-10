@@ -132,9 +132,15 @@ The login screen now supports:
 
 The local UI still keeps a fallback state while we finish the full table-by-table data sync.
 
+Important beta note:
+
+- If `schema.sql` has not been run yet, the portal still saves to browser storage only.
+- After `schema.sql` is run and an admin signs in with Supabase, admin-created clients/projects/videos/versions sync to Supabase.
+- Project names can repeat safely because new records now get unique IDs.
+
 The next production pass should finish:
 
-- Supabase reads/writes for every create/edit/delete action
+- Admin invite-code management UI
 - Admin invite sending through Resend
 - Password reset
 - Client-only RLS verification tests
