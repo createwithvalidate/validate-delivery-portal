@@ -1319,6 +1319,36 @@ function projectVersionCount(projectId) {
   return projectVideos(projectId).reduce((total, video) => total + videoVersions(video.id).length, 0);
 }
 
+function latestProjectVersion(projectId) {
+  const videoIds = new Set(projectVideos(projectId).map((video) => video.id));
+  const version = state.versions.find((item) => videoIds.has(item.videoId));
+  const video = version ? state.videos.find((item) => item.id === version.videoId) : null;
+  return { video, version };
+}
+
+function renderProjectAccessList(emails = [], emptyText = "No clients have access yet.") {
+  if (!emails.length) {
+    return `<div class="access-empty">${emptyText}</div>`;
+  }
+
+  return `
+    <div class="access-list">
+      ${emails
+        .map(
+          (email) => `
+            <div class="access-row">
+              <div>
+                <strong>${escapeHtml(accountNameForEmail(email))}</strong>
+                <span>${escapeHtml(email)}</span>
+              </div>
+            </div>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
 function renderProjectImageGrid(images, { emptyText = "No project images yet." } = {}) {
   if (!images.length) {
     return `<div class="empty compact-empty">${emptyText}</div>`;
@@ -1585,8 +1615,9 @@ async function shareProjectFromForm(form, button) {
   const project = activeProject();
   const projectId = String(form.get("projectId") || project?.id || "");
   const emails = clientEmails(form.get("shareClientEmails"));
+  const previousEmails = projectRecipientEmails(project?.id);
 
-  if (!emails.length) {
+  if (!emails.length && !previousEmails.length) {
     throw new Error("Choose at least one client account before sharing");
   }
 
@@ -1594,32 +1625,45 @@ async function shareProjectFromForm(form, button) {
     throw new Error("Open a project before sharing");
   }
 
-  state.projectRecipients[project.id] = emails;
-  if (!state.deliveredProjectIds.includes(project.id)) state.deliveredProjectIds.push(project.id);
+  if (emails.length) {
+    state.projectRecipients[project.id] = emails;
+    if (!state.deliveredProjectIds.includes(project.id)) state.deliveredProjectIds.push(project.id);
+  } else {
+    delete state.projectRecipients[project.id];
+    state.deliveredProjectIds = state.deliveredProjectIds.filter((id) => id !== project.id);
+  }
+
+  const previousSet = new Set(previousEmails);
+  const newlyAddedEmails = emails.filter((email) => !previousSet.has(email));
 
   button.textContent = "Saving access...";
   await savePortalData();
   await replaceProjectAccessInSupabase(project.id);
-  await verifyProjectInviteAccess({ project, emails });
+  if (emails.length) await verifyProjectInviteAccess({ project, emails });
 
-  button.textContent = "Sending invite...";
-  const video = projectVideos(project.id)[0];
-  await emailProjectClient({
-    client: {
-      name: emails.length === 1 ? accountNameForEmail(emails[0]) : `${emails.length} client accounts`,
-      contact: emails.length === 1 ? accountNameForEmail(emails[0]) : "Client team",
-      email: emails.join(","),
-    },
-    project,
-    video,
-    version: video ? latestVersion(video.id) : null,
-    emails,
-    emailType: "invite",
-  });
+  if (newlyAddedEmails.length) {
+    button.textContent = "Sending invite...";
+    const video = projectVideos(project.id)[0];
+    await emailProjectClient({
+      client: {
+        name:
+          newlyAddedEmails.length === 1
+            ? accountNameForEmail(newlyAddedEmails[0])
+            : `${newlyAddedEmails.length} client accounts`,
+        contact: newlyAddedEmails.length === 1 ? accountNameForEmail(newlyAddedEmails[0]) : "Client team",
+        email: newlyAddedEmails.join(","),
+      },
+      project,
+      video,
+      version: video ? latestVersion(video.id) : null,
+      emails: newlyAddedEmails,
+      emailType: "invite",
+    });
+  }
 
-  state.activity.unshift(`Shared ${project.name} with ${emails.length} client account${emails.length === 1 ? "" : "s"}`);
+  state.activity.unshift(`Updated client access for ${project.name}`);
   await savePortalData();
-  return emails.length;
+  return { selectedCount: emails.length, invitedCount: newlyAddedEmails.length };
 }
 
 async function saveProjectAdminsFromForm(form, button) {
@@ -1639,6 +1683,48 @@ async function saveProjectAdminsFromForm(form, button) {
   state.activity.unshift(`Updated admin collaborators for ${project.name}`);
   await savePortalData();
   return emails.length;
+}
+
+async function notifyProjectRecipients(button) {
+  const project = activeProject();
+  const emails = projectRecipientEmails(project?.id);
+  if (!project || !emails.length) {
+    showToast("Share this project with clients first");
+    return;
+  }
+
+  const { video, version } = latestProjectVersion(project.id);
+  if (!video || !version) {
+    showToast("Upload a version before notifying clients");
+    return;
+  }
+
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Notifying clients...";
+
+  try {
+    await emailProjectClient({
+      client: {
+        name: emails.length === 1 ? accountNameForEmail(emails[0]) : `${emails.length} client accounts`,
+        contact: emails.length === 1 ? accountNameForEmail(emails[0]) : "Client team",
+        email: emails.join(","),
+      },
+      project,
+      video,
+      version,
+      emails,
+      emailType: "version",
+    });
+    state.activity.unshift(`Notified ${emails.length} client account${emails.length === 1 ? "" : "s"} about ${version.label} for ${project.name}`);
+    await savePortalData();
+    showToast(`Update sent to ${emails.length} client account${emails.length === 1 ? "" : "s"}`);
+  } catch (error) {
+    showToast(error.message || "Clients could not be notified");
+  } finally {
+    button.disabled = false;
+    button.textContent = originalText;
+  }
 }
 
 async function notifyClientOfNewVersion({ project, video, version }) {
@@ -1924,8 +2010,8 @@ function renderProjectDetail() {
   const collaborators = projectCollaboratorEmails(project.id);
   const isShared = recipients.length > 0;
   const sendStatus = isShared
-    ? `${recipients.length} client account${recipients.length === 1 ? "" : "s"} can see this project.`
-    : "Choose clients when this project is ready to review.";
+    ? `${recipients.length} client account${recipients.length === 1 ? "" : "s"} will receive update notices.`
+    : "No clients have access yet. Share this project when it is ready.";
   setPageHeader(project.name);
   document.querySelector("#openCreate").textContent = "Add video";
   document.querySelector("#openCreate").hidden = state.session?.role !== "admin";
@@ -1995,8 +2081,15 @@ function renderProjectDetail() {
       </section>
       <aside class="panel stack action-panel">
         <p class="eyebrow">Delivery</p>
-        <button class="primary-button" id="sendClient">${isShared ? "Update shared clients" : "Share project"}</button>
+        <button class="primary-button" id="deliveryPrimary">${isShared ? "Notify clients of latest update" : "Share project"}</button>
         <p class="muted">${sendStatus}</p>
+        <div class="access-block">
+          <div class="access-block-head">
+            <span>Clients in project</span>
+            <button class="ghost-button small-action" id="manageClients">${isShared ? "Add / remove" : "Add clients"}</button>
+          </div>
+          ${renderProjectAccessList(recipients)}
+        </div>
         <div class="action-divider"></div>
         <p class="eyebrow">Admins</p>
         <p class="muted">${collaborators.length ? `${collaborators.length} admin collaborator${collaborators.length === 1 ? "" : "s"} on this project.` : "Only your admin account is collaborating."}</p>
@@ -2014,8 +2107,12 @@ function renderProjectDetail() {
       renderAdminReview();
     });
   });
-  root.querySelector("#sendClient").addEventListener("click", (event) => {
-    openProjectShareDialog(event.currentTarget);
+  root.querySelector("#deliveryPrimary").addEventListener("click", (event) => {
+    if (isShared) notifyProjectRecipients(event.currentTarget);
+    else openProjectShareDialog();
+  });
+  root.querySelector("#manageClients").addEventListener("click", () => {
+    openProjectShareDialog();
   });
   root.querySelector("#manageAdmins").addEventListener("click", () => {
     openProjectAdminsDialog();
@@ -2598,15 +2695,19 @@ function openProjectShareDialog() {
     return;
   }
 
+  const recipients = projectRecipientEmails(project.id);
+  const isShared = recipients.length > 0;
   createIntent = "share";
   clientDialogStep = "";
   createForm.reset();
   dialogEyebrow.hidden = false;
-  dialogEyebrow.textContent = "Share";
-  dialogTitle.textContent = "Share project";
+  dialogEyebrow.textContent = "Client access";
+  dialogTitle.textContent = isShared ? "Project clients" : "Share project";
   dialogSubtitle.hidden = false;
-  dialogSubtitle.textContent = "Choose the client accounts that should see this project. They will get an email invite.";
-  createSubmit.textContent = "Send invite";
+  dialogSubtitle.textContent = isShared
+    ? "Add or remove client accounts for this project. Newly added clients will receive an invite email."
+    : "Choose the client accounts that should see this project. They will receive an invite email.";
+  createSubmit.textContent = isShared ? "Save clients" : "Send invite";
   createSubmit.disabled = false;
   document.querySelector("#cancelDialog").textContent = "Cancel";
   dialogFields.innerHTML = `
@@ -2627,7 +2728,7 @@ function openProjectShareDialog() {
   setupAccountPicker({
     role: "client",
     hiddenId: "shareClientEmails",
-    selected: projectRecipientEmails(project.id),
+    selected: recipients,
     emptyText: "No client accounts found yet. Have the client create an account first.",
   });
   dialog.showModal();
@@ -2809,10 +2910,15 @@ async function handleCreateFormSubmit(event) {
 
   try {
     if (createIntent === "share") {
-      const sharedCount = await shareProjectFromForm(form, saveButton);
+      const shareResult = await shareProjectFromForm(form, saveButton);
       dialog.close();
       createForm.reset();
-      showToast(`Project shared with ${sharedCount} client account${sharedCount === 1 ? "" : "s"}`);
+      const shareMessage = shareResult.invitedCount
+        ? `Invited ${shareResult.invitedCount} new client${shareResult.invitedCount === 1 ? "" : "s"}`
+        : shareResult.selectedCount
+          ? `Project access saved for ${shareResult.selectedCount} client${shareResult.selectedCount === 1 ? "" : "s"}`
+          : "Project client access cleared";
+      showToast(shareMessage);
       renderProjectDetail();
       return;
     }
