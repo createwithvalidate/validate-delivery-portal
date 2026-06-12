@@ -55,10 +55,11 @@ button:disabled {
   position: relative;
   isolation: isolate;
   display: grid;
-  grid-template-columns: minmax(380px, 500px) minmax(540px, 1fr);
-  grid-template-rows: auto 1fr;
+  grid-template-columns: minmax(320px, 500px);
+  grid-template-rows: 1fr;
   align-items: center;
-  gap: 14px clamp(54px, 8vw, 118px);
+  justify-content: center;
+  gap: 14px;
   min-height: 100vh;
   padding: clamp(22px, 5vw, 74px) clamp(28px, 8vw, 146px);
   overflow: hidden;
@@ -232,11 +233,9 @@ button:disabled {
 }
 
 .login-brand {
-  grid-column: 1;
-  grid-row: 1;
-  align-self: start;
-  justify-self: start;
-  position: relative;
+  position: fixed;
+  top: clamp(22px, 5vw, 74px);
+  left: clamp(28px, 8vw, 146px);
   z-index: 2;
 }
 
@@ -255,10 +254,12 @@ button:disabled {
 
 .login-panel {
   grid-column: 1;
-  grid-row: 2;
+  grid-row: 1;
   align-self: center;
+  justify-self: center;
   position: relative;
   z-index: 2;
+  width: min(500px, 100%);
   padding: 0;
   border: 0;
   border-radius: 0;
@@ -270,7 +271,7 @@ button:disabled {
 .login-panel h1 {
   max-width: 500px;
   margin: 0;
-  font-size: clamp(2.7rem, 4.1vw, 4.4rem);
+  font-size: clamp(2.7rem, 4.6vw, 4.6rem);
   line-height: 0.96;
   letter-spacing: -0.035em;
   text-wrap: balance;
@@ -301,7 +302,7 @@ button:disabled {
 .login-form {
   display: grid;
   gap: 10px;
-  max-width: 430px;
+  max-width: 100%;
   padding: 14px;
   border: 1px solid rgba(255, 255, 255, 0.11);
   border-radius: var(--radius);
@@ -1272,10 +1273,10 @@ textarea {
 }
 
 .modal-subtitle {
-  max-width: 390px;
-  margin: 8px 0 0;
-  color: var(--muted);
-  font-size: 0.92rem;
+  max-width: 430px;
+  margin: 10px 0 0;
+  color: rgba(251, 251, 251, 0.72);
+  font-size: 1rem;
   line-height: 1.45;
 }
 
