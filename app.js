@@ -6,6 +6,8 @@ const seedData = {
   selectedProjectId: "",
   selectedVideoId: "",
   selectedVersionId: "",
+  currentView: "clients",
+  route: "clients",
   clients: [],
   projects: [],
   videos: [],
@@ -27,6 +29,8 @@ state.clientAccount ??= null;
 state.deliveredProjectIds ??= [];
 state.portalMeta ??= null;
 state.selectedVersionId ??= "";
+state.currentView ??= "clients";
+state.route ??= "clients";
 state.portalLoading ??= false;
 const root = document.querySelector("#viewRoot");
 const pageTitle = document.querySelector("#pageTitle");
@@ -54,8 +58,8 @@ const createForm = document.querySelector("#createForm");
 const createSubmit = document.querySelector("#createSubmit");
 const toast = document.querySelector("#toast");
 
-let route = "clients";
-let currentView = "clients";
+let route = state.route || "clients";
+let currentView = state.currentView || "clients";
 let createIntent = "client";
 let loginRole = "client";
 let authMode = "signin";
@@ -115,6 +119,12 @@ function saveState() {
   } catch {
     showToast("Browser storage is unavailable");
   }
+}
+
+function rememberView(view) {
+  currentView = view;
+  state.currentView = view;
+  saveState();
 }
 
 function getSupabase() {
@@ -207,6 +217,8 @@ function applyAccountSession(user, profile) {
         }
       : null;
   route = "clients";
+  state.route = "clients";
+  rememberView(role === "client" ? "clientDashboard" : "clients");
 }
 
 function clearAccountSession() {
@@ -214,6 +226,10 @@ function clearAccountSession() {
   state.mode = "admin";
   state.clientAccount = null;
   state.portalLoading = false;
+  state.currentView = "clients";
+  state.route = "clients";
+  currentView = "clients";
+  route = "clients";
   stopCrossDeviceSync();
   saveState();
 }
@@ -237,7 +253,13 @@ async function restoreSupabaseSession() {
   if (sessionError || !sessionData?.session?.user) return false;
 
   const user = sessionData.session.user;
+  const restoredView = state.currentView || "clients";
+  const restoredRoute = state.route || "clients";
   applyAccountSession(user, fallbackProfileForUser(user));
+  state.currentView = restoredView;
+  state.route = restoredRoute;
+  currentView = restoredView;
+  route = restoredRoute;
   state.portalLoading = !state.clients.length && !state.projects.length && !state.videos.length;
   saveState();
   return true;
@@ -945,6 +967,8 @@ function activeClientAccount() {
 
 function setRoute(nextRoute) {
   route = nextRoute;
+  state.route = nextRoute;
+  rememberView(nextRoute === "activity" || nextRoute === "settings" ? nextRoute : "clients");
   document.querySelectorAll(".nav-item").forEach((item) => {
     item.classList.toggle("active", item.dataset.route === route);
   });
@@ -1440,18 +1464,11 @@ function render() {
     return;
   }
 
-  if (state.mode === "client") {
-    renderClientDashboard();
-    return;
-  }
-
-  if (route === "activity") renderActivity();
-  else if (route === "settings") renderSettings();
-  else renderClients();
+  renderCurrentView();
 }
 
 function renderClients() {
-  currentView = "clients";
+  rememberView("clients");
   setHeroMode("admin");
   setPageHeader("Clients");
   document.querySelector("#openCreate").textContent = "New client";
@@ -1510,7 +1527,7 @@ function renderClients() {
 }
 
 function renderProjects() {
-  currentView = "projects";
+  rememberView("projects");
   dashboardHero.hidden = true;
   const client = activeClient();
   if (!client) {
@@ -1600,7 +1617,7 @@ function renderProjects() {
 }
 
 function renderProjectDetail() {
-  currentView = "projectDetail";
+  rememberView("projectDetail");
   dashboardHero.hidden = true;
   const project = activeProject();
   if (!project) {
@@ -1682,12 +1699,12 @@ function renderProjectDetail() {
 }
 
 function renderAdminReview() {
-  currentView = "adminReview";
+  rememberView("adminReview");
   renderReviewShell(true);
 }
 
 function renderClientDashboard() {
-  currentView = "clientDashboard";
+  rememberView("clientDashboard");
   const client = activeClientAccount();
   const accountEmail = state.session?.email || client?.email || "this account";
   if (!client) {
@@ -1784,7 +1801,7 @@ function renderClientDashboard() {
 }
 
 function renderClientProject() {
-  currentView = "clientProject";
+  rememberView("clientProject");
   dashboardHero.hidden = true;
   const deliveredProjectIds = new Set(state.deliveredProjectIds);
   const project = state.projects.find(
@@ -1856,12 +1873,12 @@ function renderClientProject() {
 }
 
 function renderClientReview() {
-  currentView = "clientReview";
+  rememberView("clientReview");
   renderReviewShell(false);
 }
 
 function renderReviewShell(isAdmin) {
-  currentView = isAdmin ? "adminReview" : "clientReview";
+  rememberView(isAdmin ? "adminReview" : "clientReview");
   dashboardHero.hidden = true;
   const video = activeVideo();
   if (!video) {
@@ -2023,7 +2040,7 @@ function renderReviewShell(isAdmin) {
 }
 
 function renderActivity() {
-  currentView = "activity";
+  rememberView("activity");
   dashboardHero.hidden = true;
   setPageHeader("Activity");
   document.querySelector("#openCreate").textContent = "New client";
@@ -2040,7 +2057,7 @@ function renderActivity() {
 }
 
 function renderSettings() {
-  currentView = "settings";
+  rememberView("settings");
   dashboardHero.hidden = true;
   setPageHeader("Settings");
   document.querySelector("#openCreate").textContent = "New client";
