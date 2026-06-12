@@ -57,6 +57,7 @@ const dialog = document.querySelector("#createDialog");
 const dialogTitle = document.querySelector("#dialogTitle");
 const dialogFields = document.querySelector("#dialogFields");
 const dialogEyebrow = document.querySelector("#createDialog .modal-head .eyebrow");
+const dialogSubtitle = document.querySelector("#dialogSubtitle");
 const createForm = document.querySelector("#createForm");
 const createSubmit = document.querySelector("#createSubmit");
 const toast = document.querySelector("#toast");
@@ -2266,6 +2267,8 @@ function renderClientDetailStep({ name = "", summary = "" } = {}) {
   clientDialogStep = "details";
   dialogEyebrow.hidden = false;
   dialogEyebrow.textContent = "Create";
+  dialogSubtitle.hidden = true;
+  dialogSubtitle.textContent = "";
   dialogTitle.textContent = "New client";
   createSubmit.textContent = "Next";
   document.querySelector("#cancelDialog").textContent = "Cancel";
@@ -2284,6 +2287,8 @@ function renderClientDetailStep({ name = "", summary = "" } = {}) {
 function renderClientAccountStep({ name, summary }) {
   clientDialogStep = "accounts";
   dialogEyebrow.hidden = true;
+  dialogSubtitle.hidden = false;
+  dialogSubtitle.textContent = "Pick which client logins can access this workspace.";
   dialogTitle.textContent = "Choose accounts";
   createSubmit.textContent = "Save";
   document.querySelector("#cancelDialog").textContent = "Back";
@@ -2369,6 +2374,8 @@ function openDialog(intent = createIntent) {
   }[intent];
   dialogEyebrow.hidden = false;
   dialogEyebrow.textContent = "Create";
+  dialogSubtitle.hidden = true;
+  dialogSubtitle.textContent = "";
   if (createSubmit) {
     createSubmit.textContent = intent === "version" || intent === "video" ? "Upload" : "Save";
     createSubmit.disabled = false;

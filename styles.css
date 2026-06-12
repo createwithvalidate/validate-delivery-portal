@@ -1271,6 +1271,14 @@ textarea {
   gap: 16px;
 }
 
+.modal-subtitle {
+  max-width: 390px;
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
 .form-grid {
   display: grid;
   gap: 13px;
