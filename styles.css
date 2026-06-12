@@ -1282,24 +1282,6 @@ textarea {
   gap: 10px;
 }
 
-.client-step-summary {
-  padding: 14px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: rgba(255, 255, 255, 0.035);
-}
-
-.client-step-summary h3 {
-  margin: 0 0 6px;
-  font-size: 1.2rem;
-}
-
-.client-step-summary p:last-child {
-  margin: 0;
-  color: var(--muted);
-  line-height: 1.45;
-}
-
 .account-picker-head {
   display: grid;
   gap: 8px;

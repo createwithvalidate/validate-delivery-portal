@@ -2285,11 +2285,6 @@ function renderClientAccountStep({ name, summary }) {
   dialogFields.innerHTML = `
     <input name="name" type="hidden" value="${escapeHtml(name)}" />
     <input name="summary" type="hidden" value="${escapeHtml(summary)}" />
-    <div class="client-step-summary">
-      <p class="eyebrow">Client workspace</p>
-      <h3>${escapeHtml(name)}</h3>
-      <p>${escapeHtml(summary || "New client workspace.")}</p>
-    </div>
     <div class="account-picker">
       <div class="account-picker-head">
         <label>
