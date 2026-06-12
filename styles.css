@@ -940,6 +940,20 @@ button:disabled {
   letter-spacing: 0;
 }
 
+.project-card-grid {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.project-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.project-card .card-footer {
+  margin-top: auto;
+  padding-top: 20px;
+}
+
 .card p,
 .muted {
   color: var(--muted);
@@ -1151,6 +1165,12 @@ button:disabled {
 .action-panel {
   align-self: start;
   gap: 12px;
+}
+
+.action-divider {
+  height: 1px;
+  margin: 4px 0;
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .media-summary {

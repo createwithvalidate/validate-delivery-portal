@@ -1622,6 +1622,25 @@ async function shareProjectFromForm(form, button) {
   return emails.length;
 }
 
+async function saveProjectAdminsFromForm(form, button) {
+  const project = activeProject();
+  const projectId = String(form.get("projectId") || project?.id || "");
+  if (!project || project.id !== projectId) {
+    throw new Error("Open a project before changing admin access.");
+  }
+
+  const emails = clientEmails(form.get("adminCollaboratorEmails"));
+  if (emails.length) state.projectCollaborators[project.id] = emails;
+  else delete state.projectCollaborators[project.id];
+
+  button.textContent = "Saving admins...";
+  await savePortalData();
+  await replaceProjectAccessInSupabase(project.id);
+  state.activity.unshift(`Updated admin collaborators for ${project.name}`);
+  await savePortalData();
+  return emails.length;
+}
+
 async function notifyClientOfNewVersion({ project, video, version }) {
   const emails = projectRecipientEmails(project?.id);
   if (!emails.length || !project || !video || !version) return false;
@@ -1844,7 +1863,7 @@ function renderProjects() {
           <span>${projects.filter((project) => project.status === "approved").length} approved</span>
         </div>
       </div>
-      <div class="project-list">
+      <div class="${projects.length ? "grid project-card-grid" : "project-list"}">
         ${
           projects.length
             ? projects
@@ -1853,22 +1872,22 @@ function renderProjects() {
                     const videos = projectVideos(project.id);
                     const images = projectImages(project.id);
                     const versions = projectVersionCount(project.id);
+                    const recipients = projectRecipientEmails(project.id);
                     return `
-                      <div class="list-row project-row">
-                        <div>
-                          <h3>${project.name}</h3>
-                          <p class="muted">${project.description}</p>
-                          <div class="meta-strip">
-                            <span>${videos.length} videos</span>
-                            <span>${versions} versions</span>
-                            <span>${images.length} images</span>
-                          </div>
+                      <article class="card project-card">
+                        <p class="eyebrow">${project.status}</p>
+                        <h3>${project.name}</h3>
+                        <p>${project.description}</p>
+                        <div class="meta-strip">
+                          <span>${videos.length} videos</span>
+                          <span>${versions} versions</span>
+                          <span>${images.length} images</span>
                         </div>
-                        <div class="inline-actions">
-                          <span class="status-pill ${project.status === "approved" ? "approved" : ""}">${project.status}</span>
+                        <div class="card-footer">
+                          <span class="metric">${recipients.length ? `${recipients.length} shared` : "not shared"}</span>
                           <button class="ghost-button" data-project="${project.id}">Open</button>
                         </div>
-                      </div>
+                      </article>
                     `;
                   },
                 )
@@ -1978,7 +1997,10 @@ function renderProjectDetail() {
         <p class="eyebrow">Delivery</p>
         <button class="primary-button" id="sendClient">${isShared ? "Update shared clients" : "Share project"}</button>
         <p class="muted">${sendStatus}</p>
+        <div class="action-divider"></div>
+        <p class="eyebrow">Admins</p>
         <p class="muted">${collaborators.length ? `${collaborators.length} admin collaborator${collaborators.length === 1 ? "" : "s"} on this project.` : "Only your admin account is collaborating."}</p>
+        <button class="ghost-button" id="manageAdmins">Add admins</button>
         <button class="ghost-button" id="backProjects">Back to client</button>
       </aside>
     </div>
@@ -1994,6 +2016,9 @@ function renderProjectDetail() {
   });
   root.querySelector("#sendClient").addEventListener("click", (event) => {
     openProjectShareDialog(event.currentTarget);
+  });
+  root.querySelector("#manageAdmins").addEventListener("click", () => {
+    openProjectAdminsDialog();
   });
   root.querySelector("#addVideo").addEventListener("click", () => openDialog("video"));
   root.querySelector("#addImage").addEventListener("click", () => openDialog("image"));
@@ -2566,33 +2591,6 @@ function renderClientDetailStep({ name = "", summary = "" } = {}) {
   `;
 }
 
-function renderProjectCollaboratorPicker() {
-  dialogSubtitle.hidden = false;
-  dialogSubtitle.textContent = "Add other admins who can collaborate on this project. Clients are selected later when you share.";
-  dialogFields.insertAdjacentHTML(
-    "beforeend",
-    `
-      <div class="account-picker">
-        <div class="account-picker-head">
-          <span id="accountSelectedCount">No accounts selected</span>
-        </div>
-        <input id="adminCollaboratorEmails" name="adminCollaboratorEmails" type="hidden" />
-        <div class="account-box">
-          <input id="accountSearch" type="search" placeholder="Search admin accounts" autocomplete="off" />
-          <div class="account-options" id="accountOptions">
-            <div class="account-empty">Loading admin accounts...</div>
-          </div>
-        </div>
-      </div>
-    `,
-  );
-  setupAccountPicker({
-    role: "admin",
-    hiddenId: "adminCollaboratorEmails",
-    emptyText: "No other admin accounts found yet.",
-  });
-}
-
 function openProjectShareDialog() {
   const project = activeProject();
   if (!project) {
@@ -2631,6 +2629,48 @@ function openProjectShareDialog() {
     hiddenId: "shareClientEmails",
     selected: projectRecipientEmails(project.id),
     emptyText: "No client accounts found yet. Have the client create an account first.",
+  });
+  dialog.showModal();
+}
+
+function openProjectAdminsDialog() {
+  const project = activeProject();
+  if (!project) {
+    showToast("Open a project before adding admins");
+    return;
+  }
+
+  createIntent = "admins";
+  clientDialogStep = "";
+  createForm.reset();
+  dialogEyebrow.hidden = false;
+  dialogEyebrow.textContent = "Project access";
+  dialogTitle.textContent = "Project admins";
+  dialogSubtitle.hidden = false;
+  dialogSubtitle.textContent = "Choose other admin accounts that should collaborate on this project.";
+  createSubmit.textContent = "Save admins";
+  createSubmit.disabled = false;
+  document.querySelector("#cancelDialog").textContent = "Cancel";
+  dialogFields.innerHTML = `
+    <input name="projectId" type="hidden" value="${escapeHtml(project.id)}" />
+    <div class="account-picker">
+      <div class="account-picker-head">
+        <span id="accountSelectedCount">No accounts selected</span>
+      </div>
+      <input id="adminCollaboratorEmails" name="adminCollaboratorEmails" type="hidden" />
+      <div class="account-box">
+        <input id="accountSearch" type="search" placeholder="Search admin accounts" autocomplete="off" />
+        <div class="account-options" id="accountOptions">
+          <div class="account-empty">Loading admin accounts...</div>
+        </div>
+      </div>
+    </div>
+  `;
+  setupAccountPicker({
+    role: "admin",
+    hiddenId: "adminCollaboratorEmails",
+    selected: projectCollaboratorEmails(project.id),
+    emptyText: "No other admin accounts found yet.",
   });
   dialog.showModal();
 }
@@ -2733,10 +2773,6 @@ function openDialog(intent = createIntent) {
     )
     .join("");
 
-  if (intent === "project") {
-    renderProjectCollaboratorPicker();
-  }
-
   dialog.showModal();
 }
 
@@ -2781,6 +2817,15 @@ async function handleCreateFormSubmit(event) {
       return;
     }
 
+    if (createIntent === "admins") {
+      const adminCount = await saveProjectAdminsFromForm(form, saveButton);
+      dialog.close();
+      createForm.reset();
+      showToast(adminCount ? `${adminCount} admin collaborator${adminCount === 1 ? "" : "s"} saved` : "Project admins cleared");
+      renderProjectDetail();
+      return;
+    }
+
     if (createIntent === "client") {
       const name = form.get("name") || "New Client";
       state.clients.push({
@@ -2796,7 +2841,6 @@ async function handleCreateFormSubmit(event) {
     if (createIntent === "project") {
       const name = form.get("name") || "New Project";
       const projectId = `${slug(name) || "project"}-${nowId}`;
-      const adminEmails = clientEmails(form.get("adminCollaboratorEmails"));
       state.projects.unshift({
         id: projectId,
         clientId: activeClient().id,
@@ -2805,9 +2849,6 @@ async function handleCreateFormSubmit(event) {
         description: form.get("description") || "Video delivery project.",
         archived: false,
       });
-      if (adminEmails.length) {
-        state.projectCollaborators[projectId] = adminEmails;
-      }
     }
 
     if (createIntent === "video") {
