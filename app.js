@@ -1575,16 +1575,11 @@ function renderClients() {
         .map((client) => {
           const projects = state.projects.filter((project) => project.clientId === client.id);
           const activeProjects = projects.filter((project) => !project.archived);
-          const versions = activeProjects.reduce((total, project) => total + projectVersionCount(project.id), 0);
           return `
             <article class="card">
               <p class="eyebrow">${client.contact}</p>
               <h3>${client.name}</h3>
               <p>${client.summary}</p>
-              <div class="meta-strip">
-                <span>${clientEmailLabel(client)}</span>
-                <span>${versions} versions</span>
-              </div>
               <div class="card-footer">
                 <span class="metric">${activeProjects.length} projects</span>
                 <div class="inline-actions">
