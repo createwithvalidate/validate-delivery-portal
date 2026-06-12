@@ -1318,8 +1318,10 @@ textarea {
 
 .account-options {
   display: grid;
+  align-content: start;
   gap: 8px;
-  max-height: 238px;
+  min-height: 318px;
+  max-height: 360px;
   overflow: auto;
 }
 
@@ -1389,6 +1391,10 @@ textarea {
 }
 
 .account-empty {
+  align-self: stretch;
+  display: grid;
+  place-items: center;
+  min-height: 260px;
   padding: 16px;
   color: var(--muted);
   font-size: 0.88rem;

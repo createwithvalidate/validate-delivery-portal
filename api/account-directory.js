@@ -90,7 +90,7 @@ module.exports = async function handler(request, response) {
     const accountParams = new URLSearchParams({
       select: "id,email,full_name,role,created_at",
       role: "eq.client",
-      order: "full_name.asc.nullslast",
+      order: "created_at.desc",
     });
     const accounts = await getRows("profiles", accountParams);
 
@@ -100,6 +100,7 @@ module.exports = async function handler(request, response) {
         email: account.email,
         fullName: account.full_name || account.email,
         role: account.role,
+        createdAt: account.created_at,
       })),
     });
   } catch (error) {

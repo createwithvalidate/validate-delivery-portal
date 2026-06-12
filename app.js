@@ -415,6 +415,7 @@ async function loadAccountDirectory({ force = false } = {}) {
       email: normalizeEmail(account.email),
       fullName: account.fullName || account.full_name || account.email,
       role: account.role || "client",
+      createdAt: account.createdAt || account.created_at || "",
     }))
     .filter((account) => account.email);
   saveState();
