@@ -27,6 +27,7 @@ const productionOrigin = "https://validate-delivery-portal.vercel.app";
 const supabaseUrl = "https://axvnifoamejuxxqhezwr.supabase.co";
 const supabasePublishableKey = "sb_publishable_IFOVI5nvp8DdOeqAs4lNsg__Iewd4BN";
 const firstAdminEmail = "henry@createwithvalidate.com";
+const bunnyPullZoneHostname = "vz-72fc0187-fa1.b-cdn.net";
 const state = loadState();
 state.session ??= null;
 state.clientAccount ??= null;
@@ -1315,6 +1316,82 @@ function videoVersions(videoId) {
   return state.versions.filter((version) => version.videoId === videoId);
 }
 
+function bunnyVideoIdFromEmbedUrl(embedUrl = "") {
+  const match = String(embedUrl).match(/\/(?:embed|play)\/[^/]+\/([^/?#]+)/);
+  return match ? match[1] : "";
+}
+
+function videoThumbnailUrl(version) {
+  const bunnyVideoId = version?.bunnyVideoId || bunnyVideoIdFromEmbedUrl(version?.embedUrl);
+  if (!bunnyVideoId || !bunnyPullZoneHostname) return "";
+  return `https://${bunnyPullZoneHostname}/${bunnyVideoId}/thumbnail.jpg`;
+}
+
+function renderVideoThumbnail({ version, title }) {
+  const thumbnailUrl = videoThumbnailUrl(version);
+  if (!thumbnailUrl) {
+    return `
+      <span class="video-thumb is-empty">
+        <span>No thumbnail yet</span>
+      </span>
+    `;
+  }
+
+  return `
+    <span class="video-thumb">
+      <img
+        src="${escapeHtml(thumbnailUrl)}"
+        alt="${escapeHtml(`${title} thumbnail`)}"
+        loading="lazy"
+        onerror="this.closest('.video-thumb')?.classList.add('is-empty'); this.remove();"
+      />
+      <span>No thumbnail yet</span>
+    </span>
+  `;
+}
+
+function renderVideoCardGrid({
+  videos,
+  dataAttribute = "data-video",
+  actionLabel = "Open",
+  emptyText = "No videos yet.",
+  requireVersion = false,
+}) {
+  if (!videos.length) return `<div class="empty compact-empty">${emptyText}</div>`;
+
+  return `
+    <div class="video-card-grid">
+      ${videos
+        .map((video) => {
+          const versions = videoVersions(video.id);
+          const version = versions[0];
+          const noteCount = versions.reduce(
+            (total, item) => total + state.comments.filter((comment) => comment.versionId === item.id).length,
+            0,
+          );
+          const isDisabled = requireVersion && !versions.length;
+          return `
+            <button class="video-card" type="button" ${dataAttribute}="${escapeHtml(video.id)}" ${isDisabled ? "disabled" : ""}>
+              ${renderVideoThumbnail({ version, title: video.title })}
+              <span class="video-card-body">
+                <span>
+                  <strong class="video-card-title">${escapeHtml(video.title)}</strong>
+                  <span class="muted">${version ? `Latest: ${escapeHtml(version.label)}` : "Add first version."}</span>
+                </span>
+                <span class="meta-strip">
+                  <span>${versionCountLabel(versions.length)}</span>
+                  ${noteCount ? `<span>${noteCount} comments</span>` : ""}
+                </span>
+                <span class="video-card-action">${versions.length ? actionLabel : "Add first version"}</span>
+              </span>
+            </button>
+          `;
+        })
+        .join("")}
+    </div>
+  `;
+}
+
 function projectVersionCount(projectId) {
   return projectVideos(projectId).reduce((total, video) => total + videoVersions(video.id).length, 0);
 }
@@ -2037,33 +2114,7 @@ function renderProjectDetail() {
                 <button class="ghost-button small-action" id="addVideo">Add video</button>
               </div>
             </div>
-            <div class="project-list">
-              ${videos
-                .map((video) => {
-                  const versions = videoVersions(video.id);
-                  const version = versions[0];
-                  const noteCount = versions.reduce(
-                    (total, item) => total + state.comments.filter((comment) => comment.versionId === item.id).length,
-                    0,
-                  );
-                  return `
-                    <button class="list-row media-row" type="button" data-video="${video.id}">
-                      <div>
-                        <h3>${video.title}</h3>
-                        <p class="muted">${version ? `Latest: ${version.label}` : "Add first version."}</p>
-                        <div class="meta-strip">
-                          <span>${versionCountLabel(versions.length)}</span>
-                          ${noteCount ? `<span>${noteCount} comments</span>` : ""}
-                        </div>
-                      </div>
-                      <div class="inline-actions">
-                        <span class="open-arrow">${versions.length ? "Open" : "Add first version"}</span>
-                      </div>
-                    </button>
-                  `;
-                })
-                .join("") || `<div class="empty compact-empty">No videos yet.</div>`}
-            </div>
+            ${renderVideoCardGrid({ videos, dataAttribute: "data-video", actionLabel: "Open" })}
           </div>
           <div class="media-section media-section-box">
             <div class="media-section-head">
@@ -2251,76 +2302,44 @@ function renderClientProject() {
         <p class="muted">${project.description || "Review the latest project files."}</p>
         <button class="ghost-button" type="button" id="backClientDashboard">Back to projects</button>
       </div>
-      <div class="media-section">
-        <div class="media-section-head">
-          <div>
-            <p class="eyebrow">Videos</p>
-            <h3>Videos</h3>
+      <div class="media-library-grid">
+        <div class="media-section media-section-box">
+          <div class="media-section-head">
+            <div>
+              <p class="eyebrow">Videos</p>
+              <h3>Videos</h3>
+            </div>
           </div>
+          ${renderVideoCardGrid({
+            videos,
+            dataAttribute: "data-client-video",
+            actionLabel: "Review",
+            emptyText: "No videos are ready for this project yet.",
+            requireVersion: true,
+          })}
         </div>
-        <div class="client-video-stack">
-          ${
-            videos.length
-              ? videos
-                  .map((video) => {
-                    const versions = videoVersions(video.id);
-                    return `
-                      <div class="media-card">
-                        <div class="media-card-head">
-                          <div>
-                            <h3>${video.title}</h3>
-                            <p class="muted">${versions.length ? versionCountLabel(versions.length) : "No versions yet."}</p>
-                          </div>
-                        </div>
-                        <div class="project-list">
-                          ${
-                            versions.length
-                              ? versions
-                                  .map(
-                                    (version) => `
-                                      <button class="version-row version-select" type="button" data-client-version="${version.id}" data-client-video="${video.id}">
-                                        <div>
-                                          <h3>${version.label}</h3>
-                                          <p class="muted">${version.note || "Open this version to review."}</p>
-                                          <div class="meta-strip">
-                                            <span>${version.createdAt}</span>
-                                            <span>${state.comments.filter((comment) => comment.versionId === version.id).length} comments</span>
-                                          </div>
-                                        </div>
-                                        <span class="status-pill ${version.approved ? "approved" : ""}">${version.approved ? "approved" : "open review"}</span>
-                                      </button>
-                                    `,
-                                  )
-                                  .join("")
-                              : `<div class="empty compact-empty">Waiting on the first upload for this video.</div>`
-                          }
-                        </div>
-                      </div>
-                    `;
-                  })
-                  .join("")
-              : `<div class="empty compact-empty">No videos are ready for this project yet.</div>`
-          }
-        </div>
-      </div>
-      <div class="media-section">
-        <div class="media-section-head">
-          <div>
-            <p class="eyebrow">Images</p>
-            <h3>Images</h3>
+        <div class="media-section media-section-box">
+          <div class="media-section-head">
+            <div>
+              <p class="eyebrow">Images</p>
+              <h3>Images</h3>
+            </div>
           </div>
+          ${renderProjectImageGrid(images, { emptyText: "No images yet." })}
         </div>
-        ${renderProjectImageGrid(images, { emptyText: "No images yet." })}
       </div>
     </section>
   `;
 
   root.querySelector("#backClientDashboard")?.addEventListener("click", renderClientDashboard);
-  root.querySelectorAll("[data-client-version]").forEach((button) => {
+  root.querySelectorAll("[data-client-video]").forEach((button) => {
     button.addEventListener("click", () => {
+      const videoId = button.dataset.clientVideo;
+      const version = videoVersions(videoId)[0];
+      if (!version) return;
       state.selectedProjectId = project.id;
-      state.selectedVideoId = button.dataset.clientVideo;
-      state.selectedVersionId = button.dataset.clientVersion;
+      state.selectedVideoId = videoId;
+      state.selectedVersionId = version.id;
       saveState();
       renderClientReview();
     });
