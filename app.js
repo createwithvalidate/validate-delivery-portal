@@ -60,6 +60,7 @@ const dialogEyebrow = document.querySelector("#createDialog .modal-head .eyebrow
 const dialogSubtitle = document.querySelector("#dialogSubtitle");
 const createForm = document.querySelector("#createForm");
 const createSubmit = document.querySelector("#createSubmit");
+const deleteClientAction = document.querySelector("#deleteClientAction");
 const toast = document.querySelector("#toast");
 
 let route = state.route || "clients";
@@ -893,6 +894,7 @@ function setPageHeader(title, eyebrow = "Client delivery portal", style = "") {
   pageTitle.textContent = title;
   pageEyebrow.textContent = eyebrow;
   topbar.classList.toggle("client-title-card", style === "client");
+  if (deleteClientAction) deleteClientAction.hidden = true;
 }
 
 function updateAuthView() {
@@ -908,6 +910,7 @@ function updateAuthView() {
 
   sessionLabel.textContent = "";
   document.querySelector("#openCreate").hidden = state.session.role !== "admin" || state.mode === "client";
+  if (deleteClientAction) deleteClientAction.hidden = true;
 }
 
 function renderCurrentView() {
@@ -1259,6 +1262,8 @@ async function deleteClient(clientId) {
   if (!client) return;
   const confirmed = window.confirm(`Delete ${client.name} and all of its projects?`);
   if (!confirmed) return;
+  const veryConfirmed = window.confirm(`Are you very sure? This permanently deletes ${client.name}, its projects, videos, versions, comments, and client access.`);
+  if (!veryConfirmed) return;
 
   const projectIds = state.projects.filter((project) => project.clientId === clientId).map((project) => project.id);
   const videoIds = state.videos.filter((video) => projectIds.includes(video.projectId)).map((video) => video.id);
@@ -1583,7 +1588,6 @@ function renderClients() {
               <div class="card-footer">
                 <span class="metric">${activeProjects.length} projects</span>
                 <div class="inline-actions">
-                  <button class="ghost-button danger-button" data-delete-client="${client.id}">Delete</button>
                   <button class="ghost-button" data-client="${client.id}">Open workspace</button>
                 </div>
               </div>
@@ -1601,10 +1605,6 @@ function renderClients() {
       renderProjects();
     });
   });
-
-  root.querySelectorAll("[data-delete-client]").forEach((button) => {
-    button.addEventListener("click", () => deleteClient(button.dataset.deleteClient));
-  });
 }
 
 function renderProjects() {
@@ -1618,6 +1618,10 @@ function renderProjects() {
 
   setPageHeader(client.name, client.contact || "Projects", "client");
   document.querySelector("#openCreate").textContent = "New project";
+  if (deleteClientAction) {
+    deleteClientAction.hidden = state.session?.role !== "admin";
+    deleteClientAction.dataset.clientId = client.id;
+  }
   createIntent = "project";
   const projects = state.projects.filter((project) => project.clientId === client.id && !project.archived);
 
@@ -2656,6 +2660,10 @@ document.querySelector("#cancelDialog").addEventListener("click", () => {
     return;
   }
   dialog.close();
+});
+deleteClientAction?.addEventListener("click", () => {
+  const clientId = deleteClientAction.dataset.clientId || activeClient()?.id;
+  if (clientId) deleteClient(clientId);
 });
 document.querySelector("#signOut").addEventListener("click", async () => {
   try {

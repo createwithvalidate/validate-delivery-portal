@@ -681,6 +681,23 @@ button:disabled {
   font-weight: 700;
 }
 
+.delete-client-button {
+  min-height: 32px;
+  padding: 0 11px;
+  border: 1px solid rgba(255, 109, 94, 0.16);
+  border-radius: 7px;
+  background: rgba(255, 109, 94, 0.045);
+  color: rgba(255, 190, 184, 0.7);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.delete-client-button:hover {
+  border-color: rgba(255, 109, 94, 0.38);
+  background: rgba(255, 109, 94, 0.11);
+  color: #ffd8d4;
+}
+
 .sign-out-button:hover {
   background: rgba(255, 255, 255, 0.075);
   color: rgba(251, 251, 251, 0.82);
