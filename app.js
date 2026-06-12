@@ -15,6 +15,9 @@ const seedData = {
   comments: [],
   activity: [],
   deliveredProjectIds: [],
+  projectRecipients: {},
+  projectCollaborators: {},
+  projectAccessRows: [],
   accountDirectory: [],
   portalMeta: null,
 };
@@ -28,6 +31,9 @@ const state = loadState();
 state.session ??= null;
 state.clientAccount ??= null;
 state.deliveredProjectIds ??= [];
+state.projectRecipients ??= {};
+state.projectCollaborators ??= {};
+state.projectAccessRows ??= [];
 state.accountDirectory ??= [];
 state.portalMeta ??= null;
 state.selectedVersionId ??= "";
@@ -109,7 +115,11 @@ function normalizeEmail(value = "") {
 }
 
 function clientEmails(clientOrValue = "") {
-  const value = typeof clientOrValue === "string" ? clientOrValue : clientOrValue?.email;
+  const value = Array.isArray(clientOrValue)
+    ? clientOrValue.join(",")
+    : typeof clientOrValue === "string"
+      ? clientOrValue
+      : clientOrValue?.email;
   return [
     ...new Set(
       String(value || "")
@@ -127,14 +137,83 @@ function clientEmailLabel(client) {
   return `${emails[0]} + ${emails.length - 1} more`;
 }
 
-function clientAccountCountLabel(client) {
-  const count = clientEmails(client).length;
-  return `${count} client account${count === 1 ? "" : "s"}`;
-}
-
 function clientMatchesSession(client) {
   const sessionEmail = normalizeEmail(state.session?.email);
   return Boolean(sessionEmail && clientEmails(client).includes(sessionEmail));
+}
+
+function mapAccountRow(account = {}) {
+  return {
+    id: account.id || account.email,
+    email: normalizeEmail(account.email),
+    fullName: account.fullName || account.full_name || account.email,
+    role: account.role === "admin" ? "admin" : "client",
+    createdAt: account.createdAt || account.created_at || "",
+  };
+}
+
+function accountForEmail(email) {
+  const normalized = normalizeEmail(email);
+  return (state.accountDirectory || []).find((account) => normalizeEmail(account.email) === normalized);
+}
+
+function accountRoleForEmail(email) {
+  const normalized = normalizeEmail(email);
+  if (!normalized) return "";
+  const account = accountForEmail(normalized);
+  if (account?.role) return account.role;
+  if (normalized === normalizeEmail(state.session?.email)) return state.session?.role || "";
+  return "";
+}
+
+function accountNameForEmail(email) {
+  const normalized = normalizeEmail(email);
+  const account = accountForEmail(normalized);
+  return account?.fullName || normalized;
+}
+
+function projectRecipientEmails(projectId) {
+  const explicit = clientEmails(state.projectRecipients?.[projectId]);
+  if (explicit.length) return explicit;
+  if (!state.deliveredProjectIds.includes(projectId)) return [];
+  const project = state.projects.find((item) => item.id === projectId);
+  const client = state.clients.find((item) => item.id === project?.clientId);
+  return clientEmails(client);
+}
+
+function projectCollaboratorEmails(projectId) {
+  return clientEmails(state.projectCollaborators?.[projectId]);
+}
+
+function accessRowsForProject(projectId) {
+  const emails = [...new Set([...projectRecipientEmails(projectId), ...projectCollaboratorEmails(projectId)])];
+  return emails.map((email) => ({ project_id: projectId, email }));
+}
+
+function projectAccessRowsForSave() {
+  return state.projects.flatMap((project) => accessRowsForProject(project.id));
+}
+
+function applyProjectAccessRows(rows = []) {
+  const normalizedRows = rows
+    .map((row) => ({
+      projectId: row.project_id || row.projectId,
+      email: normalizeEmail(row.email),
+    }))
+    .filter((row) => row.projectId && row.email);
+  const recipients = {};
+  const collaborators = {};
+
+  normalizedRows.forEach((row) => {
+    const bucket = accountRoleForEmail(row.email) === "admin" ? collaborators : recipients;
+    bucket[row.projectId] ??= [];
+    if (!bucket[row.projectId].includes(row.email)) bucket[row.projectId].push(row.email);
+  });
+
+  state.projectAccessRows = normalizedRows;
+  state.projectRecipients = recipients;
+  state.projectCollaborators = collaborators;
+  state.deliveredProjectIds = Object.keys(recipients).filter((projectId) => recipients[projectId]?.length);
 }
 
 function escapeHtml(value = "") {
@@ -369,13 +448,30 @@ function mapCommentRow(row) {
   };
 }
 
-function applyPortalRows({ clients = [], projects = [], videos = [], versions = [], comments = [], deliveredProjectIds = [], meta = null }) {
+function applyPortalRows({
+  clients = [],
+  projects = [],
+  videos = [],
+  versions = [],
+  comments = [],
+  deliveredProjectIds = [],
+  projectAccessRows,
+  accountDirectory = [],
+  meta = null,
+}) {
   state.clients = clients.map(mapClientRow);
   state.projects = projects.map(mapProjectRow);
   state.videos = videos.map(mapVideoRow);
   state.versions = versions.map(mapVersionRow);
   state.comments = comments.map(mapCommentRow);
-  state.deliveredProjectIds = [...new Set(deliveredProjectIds)];
+  if (accountDirectory.length) {
+    state.accountDirectory = accountDirectory.map(mapAccountRow).filter((account) => account.email);
+  }
+  if (Array.isArray(projectAccessRows)) {
+    applyProjectAccessRows(projectAccessRows);
+  } else {
+    state.deliveredProjectIds = [...new Set(deliveredProjectIds)];
+  }
   state.portalMeta = {
     source: meta?.source || "server",
     email: meta?.email || state.session?.email || "",
@@ -400,7 +496,7 @@ async function loadAccountDirectory({ force = false } = {}) {
   if (!force && state.accountDirectory?.length) return state.accountDirectory;
 
   const token = await supabaseAccessToken();
-  if (!token) throw new Error("Sign in again before loading client accounts.");
+  if (!token) throw new Error("Sign in again before loading accounts.");
 
   const response = await withTimeout(
     fetch(apiUrl("/api/account-directory"), {
@@ -409,21 +505,14 @@ async function loadAccountDirectory({ force = false } = {}) {
         Authorization: `Bearer ${token}`,
       },
     }),
-    "Client account list took too long.",
+    "Account list took too long.",
     7500,
   );
   const result = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(result.error || "Could not load client accounts.");
+  if (!response.ok) throw new Error(result.error || "Could not load accounts.");
 
-  state.accountDirectory = (result.accounts || [])
-    .map((account) => ({
-      id: account.id || account.email,
-      email: normalizeEmail(account.email),
-      fullName: account.fullName || account.full_name || account.email,
-      role: account.role || "client",
-      createdAt: account.createdAt || account.created_at || "",
-    }))
-    .filter((account) => account.email);
+  state.accountDirectory = (result.accounts || []).map(mapAccountRow).filter((account) => account.email);
+  if (state.projectAccessRows?.length) applyProjectAccessRows(state.projectAccessRows);
   saveState();
   return state.accountDirectory;
 }
@@ -444,6 +533,7 @@ async function loadPortalDataFromSupabase() {
     versionsResult,
     commentsResult,
     accessResult,
+    profilesResult,
   ] = await Promise.all([
     client.from("clients").select("*").order("created_at", { ascending: false }),
     client.from("projects").select("*").order("created_at", { ascending: false }),
@@ -451,6 +541,7 @@ async function loadPortalDataFromSupabase() {
     client.from("video_versions").select("*").order("created_at", { ascending: false }),
     client.from("comments").select("*").order("created_at", { ascending: false }),
     client.from("project_access").select("*"),
+    client.from("profiles").select("id,email,full_name,role,created_at").order("created_at", { ascending: false }),
   ]);
 
   const error =
@@ -459,7 +550,8 @@ async function loadPortalDataFromSupabase() {
     videosResult.error ||
     versionsResult.error ||
     commentsResult.error ||
-    accessResult.error;
+    accessResult.error ||
+    profilesResult.error;
   if (error) throw error;
 
   applyPortalRows({
@@ -468,7 +560,8 @@ async function loadPortalDataFromSupabase() {
     videos: videosResult.data || [],
     versions: versionsResult.data || [],
     comments: commentsResult.data || [],
-    deliveredProjectIds: (accessResult.data || []).map((row) => row.project_id),
+    projectAccessRows: accessResult.data || [],
+    accountDirectory: profilesResult.data || [],
   });
   state.portalLoading = false;
   saveState();
@@ -747,17 +840,9 @@ async function persistPortalDataToSupabase() {
       "Comments",
     );
   }
-  if (state.deliveredProjectIds.length) {
-    const accessRows = state.deliveredProjectIds
-      .flatMap((projectId) => {
-        const project = state.projects.find((item) => item.id === projectId);
-        const clientRecord = state.clients.find((item) => item.id === project?.clientId);
-        return clientEmails(clientRecord).map((email) => ({ project_id: projectId, email }));
-      })
-      .filter(Boolean);
-    if (accessRows.length) {
-      await runSave(client.from("project_access").upsert(accessRows), "Project access");
-    }
+  const accessRows = projectAccessRowsForSave();
+  if (accessRows.length) {
+    await runSave(client.from("project_access").upsert(accessRows), "Project access");
   }
 
   return true;
@@ -1050,6 +1135,8 @@ function portalFingerprint() {
     versions: state.versions,
     comments: state.comments,
     deliveredProjectIds: state.deliveredProjectIds,
+    projectRecipients: state.projectRecipients,
+    projectCollaborators: state.projectCollaborators,
   });
 }
 
@@ -1329,6 +1416,12 @@ async function deleteClient(clientId) {
   state.videos = state.videos.filter((video) => !videoIds.includes(video.id));
   state.versions = state.versions.filter((version) => !versionIds.includes(version.id));
   state.comments = state.comments.filter((comment) => !versionIds.includes(comment.versionId));
+  projectIds.forEach((projectId) => {
+    delete state.projectRecipients[projectId];
+    delete state.projectCollaborators[projectId];
+  });
+  state.projectAccessRows = state.projectAccessRows.filter((row) => !projectIds.includes(row.projectId));
+  state.deliveredProjectIds = state.deliveredProjectIds.filter((id) => !projectIds.includes(id));
   if (state.selectedClientId === clientId) state.selectedClientId = "";
   if (projectIds.includes(state.selectedProjectId)) state.selectedProjectId = "";
   if (videoIds.includes(state.selectedVideoId)) state.selectedVideoId = "";
@@ -1362,6 +1455,9 @@ async function deleteProject(projectId) {
   state.versions = state.versions.filter((version) => !versionIds.includes(version.id));
   state.comments = state.comments.filter((comment) => !versionIds.includes(comment.versionId));
   state.deliveredProjectIds = state.deliveredProjectIds.filter((id) => id !== projectId);
+  delete state.projectRecipients[projectId];
+  delete state.projectCollaborators[projectId];
+  state.projectAccessRows = state.projectAccessRows.filter((row) => row.projectId !== projectId);
   if (state.selectedProjectId === projectId) state.selectedProjectId = "";
   if (videoIds.includes(state.selectedVideoId)) state.selectedVideoId = "";
   state.activity.unshift(`Deleted project ${project.name}`);
@@ -1405,8 +1501,8 @@ function updateStats() {
   setHeroMode("admin");
 }
 
-async function emailProjectClient({ client, project, video, version, emailType = "version" }) {
-  const emails = clientEmails(client);
+async function emailProjectClient({ client, project, video, version, emails: explicitEmails = null, emailType = "version" }) {
+  const emails = clientEmails(explicitEmails || client);
   if (!emails.length) {
     throw new Error("Choose at least one client account before sending");
   }
@@ -1424,7 +1520,7 @@ async function emailProjectClient({ client, project, video, version, emailType =
       body: JSON.stringify({
         emailType,
         clientEmail: email,
-        clientName: client.contact || client.name,
+        clientName: client?.contact || client?.name || accountNameForEmail(email) || "there",
         projectName: project.name,
         videoTitle: video?.title || project.name,
         versionLabel: version?.label || "Project invite",
@@ -1446,9 +1542,26 @@ async function emailProjectClient({ client, project, video, version, emailType =
   return { ok: true, sent: results.length, results };
 }
 
-async function verifyProjectInviteAccess({ project, client }) {
+async function replaceProjectAccessInSupabase(projectId) {
   const supabase = getSupabase();
-  const emails = clientEmails(client);
+  if (!supabase || !projectId) throw new Error("Could not save project access.");
+  const rows = accessRowsForProject(projectId);
+  const { error: deleteError } = await supabase.from("project_access").delete().eq("project_id", projectId);
+  if (deleteError) throw new Error(`Project access cleanup failed: ${deleteError.message}`);
+  if (!rows.length) return [];
+  const { data, error } = await supabase.from("project_access").upsert(rows).select("project_id,email");
+  if (error) throw new Error(`Project access did not save: ${error.message}`);
+  state.projectAccessRows = [
+    ...state.projectAccessRows.filter((row) => row.projectId !== projectId),
+    ...rows.map((row) => ({ projectId: row.project_id, email: row.email })),
+  ];
+  saveState();
+  return data || rows;
+}
+
+async function verifyProjectInviteAccess({ project, client, emails: explicitEmails = null }) {
+  const supabase = getSupabase();
+  const emails = clientEmails(explicitEmails || client);
   if (!supabase || !project?.id || !emails.length) {
     throw new Error("Could not verify the project invite.");
   }
@@ -1468,59 +1581,63 @@ async function verifyProjectInviteAccess({ project, client }) {
   return data;
 }
 
-async function inviteProjectClient(button) {
-  const client = activeClient();
+async function shareProjectFromForm(form, button) {
   const project = activeProject();
-  const emails = clientEmails(client);
+  const projectId = String(form.get("projectId") || project?.id || "");
+  const emails = clientEmails(form.get("shareClientEmails"));
 
   if (!emails.length) {
-    showToast("Choose at least one client account before inviting");
-    return;
+    throw new Error("Choose at least one client account before sharing");
   }
 
-  if (!project) {
-    showToast("Open a project before inviting");
-    return;
+  if (!project || project.id !== projectId) {
+    throw new Error("Open a project before sharing");
   }
 
-  const originalText = button.textContent;
-  button.disabled = true;
-  button.textContent = "Saving invite...";
+  state.projectRecipients[project.id] = emails;
+  if (!state.deliveredProjectIds.includes(project.id)) state.deliveredProjectIds.push(project.id);
 
-  try {
-    if (!state.deliveredProjectIds.includes(project.id)) state.deliveredProjectIds.push(project.id);
-    await savePortalData();
-    await verifyProjectInviteAccess({ project, client });
+  button.textContent = "Saving access...";
+  await savePortalData();
+  await replaceProjectAccessInSupabase(project.id);
+  await verifyProjectInviteAccess({ project, emails });
 
-    button.textContent = "Sending invite...";
-    const video = projectVideos(project.id)[0];
-    await emailProjectClient({
-      client,
-      project,
-      video,
-      version: video ? latestVersion(video.id) : null,
-      emailType: "invite",
-    });
+  button.textContent = "Sending invite...";
+  const video = projectVideos(project.id)[0];
+  await emailProjectClient({
+    client: {
+      name: emails.length === 1 ? accountNameForEmail(emails[0]) : `${emails.length} client accounts`,
+      contact: emails.length === 1 ? accountNameForEmail(emails[0]) : "Client team",
+      email: emails.join(","),
+    },
+    project,
+    video,
+    version: video ? latestVersion(video.id) : null,
+    emails,
+    emailType: "invite",
+  });
 
-    state.activity.unshift(`Invited ${emails.length} client account${emails.length === 1 ? "" : "s"} to ${project.name}`);
-    await savePortalData();
-    showToast(`Project invite sent to ${emails.length} account${emails.length === 1 ? "" : "s"}`);
-    renderProjectDetail();
-  } catch (error) {
-    showToast(error.message);
-  } finally {
-    button.disabled = false;
-    button.textContent = originalText;
-  }
+  state.activity.unshift(`Shared ${project.name} with ${emails.length} client account${emails.length === 1 ? "" : "s"}`);
+  await savePortalData();
+  return emails.length;
 }
 
 async function notifyClientOfNewVersion({ project, video, version }) {
-  const client = state.clients.find((item) => item.id === project?.clientId);
-  const emails = clientEmails(client);
+  const emails = projectRecipientEmails(project?.id);
   if (!emails.length || !project || !video || !version) return false;
-  if (!state.deliveredProjectIds.includes(project.id)) return false;
 
-  await emailProjectClient({ client, project, video, version, emailType: "version" });
+  await emailProjectClient({
+    client: {
+      name: emails.length === 1 ? accountNameForEmail(emails[0]) : `${emails.length} client accounts`,
+      contact: emails.length === 1 ? accountNameForEmail(emails[0]) : "Client team",
+      email: emails.join(","),
+    },
+    project,
+    video,
+    version,
+    emails,
+    emailType: "version",
+  });
   state.activity.unshift(`Notified ${emails.length} client account${emails.length === 1 ? "" : "s"} about ${version.label} for ${video.title}`);
   await savePortalData();
   return true;
@@ -1782,16 +1899,14 @@ function renderProjectDetail() {
     return;
   }
 
-  const client = state.clients.find((item) => item.id === project.clientId);
   const videos = projectVideos(project.id);
   const images = projectImages(project.id);
-  const isInvited = state.deliveredProjectIds.includes(project.id);
-  const canInvite = Boolean(clientEmails(client).length);
-  const sendStatus = !canInvite
-    ? "Choose client accounts first."
-    : isInvited
-      ? "Project is on the client dashboard."
-      : `Send to ${clientAccountCountLabel(client)}.`;
+  const recipients = projectRecipientEmails(project.id);
+  const collaborators = projectCollaboratorEmails(project.id);
+  const isShared = recipients.length > 0;
+  const sendStatus = isShared
+    ? `${recipients.length} client account${recipients.length === 1 ? "" : "s"} can see this project.`
+    : "Choose clients when this project is ready to review.";
   setPageHeader(project.name);
   document.querySelector("#openCreate").textContent = "Add video";
   document.querySelector("#openCreate").hidden = state.session?.role !== "admin";
@@ -1861,8 +1976,9 @@ function renderProjectDetail() {
       </section>
       <aside class="panel stack action-panel">
         <p class="eyebrow">Delivery</p>
-        <button class="primary-button" id="sendClient" ${canInvite ? "" : "disabled"}>${isInvited ? "Resend project invite" : "Invite client to project"}</button>
+        <button class="primary-button" id="sendClient">${isShared ? "Update shared clients" : "Share project"}</button>
         <p class="muted">${sendStatus}</p>
+        <p class="muted">${collaborators.length ? `${collaborators.length} admin collaborator${collaborators.length === 1 ? "" : "s"} on this project.` : "Only your admin account is collaborating."}</p>
         <button class="ghost-button" id="backProjects">Back to client</button>
       </aside>
     </div>
@@ -1877,7 +1993,7 @@ function renderProjectDetail() {
     });
   });
   root.querySelector("#sendClient").addEventListener("click", (event) => {
-    inviteProjectClient(event.currentTarget);
+    openProjectShareDialog(event.currentTarget);
   });
   root.querySelector("#addVideo").addEventListener("click", () => openDialog("video"));
   root.querySelector("#addImage").addEventListener("click", () => openDialog("image"));
@@ -2313,9 +2429,16 @@ function renderSettings() {
   `;
 }
 
-function renderClientAccountOptions({ accounts, selectedEmails, query = "" }) {
+function renderAccountOptions({
+  accounts,
+  selectedEmails,
+  query = "",
+  role = "client",
+  hiddenId = "accountEmails",
+  emptyText = "No accounts found yet.",
+}) {
   const options = dialogFields.querySelector("#accountOptions");
-  const hidden = dialogFields.querySelector("#clientAccountEmails");
+  const hidden = dialogFields.querySelector(`#${hiddenId}`);
   const selectedCount = dialogFields.querySelector("#accountSelectedCount");
   if (!options || !hidden || !selectedCount) return;
 
@@ -2324,15 +2447,21 @@ function renderClientAccountOptions({ accounts, selectedEmails, query = "" }) {
   selectedCount.textContent = selected.length ? `${selected.length} selected` : "No accounts selected";
 
   const searchTerm = query.trim().toLowerCase();
-  const filtered = accounts.filter((account) => {
+  const currentEmail = normalizeEmail(state.session?.email);
+  const roleAccounts = accounts.filter((account) => {
+    if (account.role !== role) return false;
+    if (role === "admin" && normalizeEmail(account.email) === currentEmail) return false;
+    return true;
+  });
+  const filtered = roleAccounts.filter((account) => {
     const haystack = `${account.fullName || ""} ${account.email || ""}`.toLowerCase();
     return !searchTerm || haystack.includes(searchTerm);
   });
 
-  if (!accounts.length) {
+  if (!roleAccounts.length) {
     options.innerHTML = `
       <div class="account-empty">
-        No client accounts found yet. Create a client login first, then come back here.
+        ${escapeHtml(emptyText)}
       </div>
     `;
     return;
@@ -2369,16 +2498,24 @@ function renderClientAccountOptions({ accounts, selectedEmails, query = "" }) {
     .join("");
 }
 
-function setupClientAccountPicker() {
-  const selectedEmails = new Set();
+function setupAccountPicker({
+  role = "client",
+  hiddenId = "accountEmails",
+  selected = [],
+  emptyText = "No accounts found yet.",
+} = {}) {
+  const selectedEmails = new Set(clientEmails(selected));
   const search = dialogFields.querySelector("#accountSearch");
   const options = dialogFields.querySelector("#accountOptions");
 
   const renderOptions = () => {
-    renderClientAccountOptions({
+    renderAccountOptions({
       accounts: state.accountDirectory || [],
       selectedEmails,
       query: search?.value || "",
+      role,
+      hiddenId,
+      emptyText,
     });
   };
 
@@ -2415,7 +2552,7 @@ function renderClientDetailStep({ name = "", summary = "" } = {}) {
   dialogSubtitle.hidden = true;
   dialogSubtitle.textContent = "";
   dialogTitle.textContent = "New client";
-  createSubmit.textContent = "Next";
+  createSubmit.textContent = "Save";
   document.querySelector("#cancelDialog").textContent = "Cancel";
   dialogFields.innerHTML = `
     <label>
@@ -2429,31 +2566,73 @@ function renderClientDetailStep({ name = "", summary = "" } = {}) {
   `;
 }
 
-function renderClientAccountStep({ name, summary }) {
-  clientDialogStep = "accounts";
-  dialogEyebrow.hidden = true;
+function renderProjectCollaboratorPicker() {
   dialogSubtitle.hidden = false;
-  dialogSubtitle.textContent = "Pick which client logins can access this workspace.";
-  dialogTitle.textContent = "Choose accounts";
-  createSubmit.textContent = "Save";
-  document.querySelector("#cancelDialog").textContent = "Back";
+  dialogSubtitle.textContent = "Add other admins who can collaborate on this project. Clients are selected later when you share.";
+  dialogFields.insertAdjacentHTML(
+    "beforeend",
+    `
+      <div class="account-picker">
+        <div class="account-picker-head">
+          <span id="accountSelectedCount">No accounts selected</span>
+        </div>
+        <input id="adminCollaboratorEmails" name="adminCollaboratorEmails" type="hidden" />
+        <div class="account-box">
+          <input id="accountSearch" type="search" placeholder="Search admin accounts" autocomplete="off" />
+          <div class="account-options" id="accountOptions">
+            <div class="account-empty">Loading admin accounts...</div>
+          </div>
+        </div>
+      </div>
+    `,
+  );
+  setupAccountPicker({
+    role: "admin",
+    hiddenId: "adminCollaboratorEmails",
+    emptyText: "No other admin accounts found yet.",
+  });
+}
+
+function openProjectShareDialog() {
+  const project = activeProject();
+  if (!project) {
+    showToast("Open a project before sharing");
+    return;
+  }
+
+  createIntent = "share";
+  clientDialogStep = "";
+  createForm.reset();
+  dialogEyebrow.hidden = false;
+  dialogEyebrow.textContent = "Share";
+  dialogTitle.textContent = "Share project";
+  dialogSubtitle.hidden = false;
+  dialogSubtitle.textContent = "Choose the client accounts that should see this project. They will get an email invite.";
+  createSubmit.textContent = "Send invite";
+  createSubmit.disabled = false;
+  document.querySelector("#cancelDialog").textContent = "Cancel";
   dialogFields.innerHTML = `
-    <input name="name" type="hidden" value="${escapeHtml(name)}" />
-    <input name="summary" type="hidden" value="${escapeHtml(summary)}" />
+    <input name="projectId" type="hidden" value="${escapeHtml(project.id)}" />
     <div class="account-picker">
       <div class="account-picker-head">
         <span id="accountSelectedCount">No accounts selected</span>
       </div>
-      <input id="clientAccountEmails" name="clientAccountEmails" type="hidden" />
+      <input id="shareClientEmails" name="shareClientEmails" type="hidden" />
       <div class="account-box">
-        <input id="accountSearch" type="search" placeholder="Search created accounts" autocomplete="off" />
+        <input id="accountSearch" type="search" placeholder="Search client accounts" autocomplete="off" />
         <div class="account-options" id="accountOptions">
           <div class="account-empty">Loading client accounts...</div>
         </div>
       </div>
     </div>
   `;
-  setupClientAccountPicker();
+  setupAccountPicker({
+    role: "client",
+    hiddenId: "shareClientEmails",
+    selected: projectRecipientEmails(project.id),
+    emptyText: "No client accounts found yet. Have the client create an account first.",
+  });
+  dialog.showModal();
 }
 
 function openDialog(intent = createIntent) {
@@ -2554,6 +2733,10 @@ function openDialog(intent = createIntent) {
     )
     .join("");
 
+  if (intent === "project") {
+    renderProjectCollaboratorPicker();
+  }
+
   dialog.showModal();
 }
 
@@ -2561,14 +2744,6 @@ async function handleCreateFormSubmit(event) {
   event.preventDefault();
   event.stopPropagation();
   if (isSavingCreateForm) return;
-
-  if (createIntent === "client" && clientDialogStep === "details") {
-    const form = new FormData(createForm);
-    const name = String(form.get("name") || "").trim() || "New Client";
-    const summary = String(form.get("summary") || "").trim() || "New client workspace.";
-    renderClientAccountStep({ name, summary });
-    return;
-  }
 
   isSavingCreateForm = true;
   const form = new FormData(createForm);
@@ -2582,6 +2757,9 @@ async function handleCreateFormSubmit(event) {
     versions: structuredClone(state.versions),
     comments: structuredClone(state.comments),
     deliveredProjectIds: structuredClone(state.deliveredProjectIds),
+    projectRecipients: structuredClone(state.projectRecipients),
+    projectCollaborators: structuredClone(state.projectCollaborators),
+    projectAccessRows: structuredClone(state.projectAccessRows),
     selectedClientId: state.selectedClientId,
     selectedProjectId: state.selectedProjectId,
     selectedVideoId: state.selectedVideoId,
@@ -2594,24 +2772,22 @@ async function handleCreateFormSubmit(event) {
   syncPaused = true;
 
   try {
+    if (createIntent === "share") {
+      const sharedCount = await shareProjectFromForm(form, saveButton);
+      dialog.close();
+      createForm.reset();
+      showToast(`Project shared with ${sharedCount} client account${sharedCount === 1 ? "" : "s"}`);
+      renderProjectDetail();
+      return;
+    }
+
     if (createIntent === "client") {
       const name = form.get("name") || "New Client";
-      const selectedEmails = clientEmails(form.get("clientAccountEmails"));
-      if (!selectedEmails.length) {
-        throw new Error("Choose at least one client account for this workspace.");
-      }
-      const selectedAccounts = selectedEmails
-        .map((email) => state.accountDirectory.find((account) => normalizeEmail(account.email) === email))
-        .filter(Boolean);
-      const contact =
-        selectedAccounts.length > 1
-          ? `${selectedAccounts[0].fullName || selectedEmails[0]} + ${selectedAccounts.length - 1} more`
-          : selectedAccounts[0]?.fullName || selectedEmails[0] || "Client account";
       state.clients.push({
         id: `${slug(name) || "client"}-${nowId}`,
         name,
-        contact,
-        email: selectedEmails.join(","),
+        contact: "Client workspace",
+        email: "",
         summary: form.get("summary") || "New client workspace.",
         archived: false,
       });
@@ -2619,14 +2795,19 @@ async function handleCreateFormSubmit(event) {
 
     if (createIntent === "project") {
       const name = form.get("name") || "New Project";
+      const projectId = `${slug(name) || "project"}-${nowId}`;
+      const adminEmails = clientEmails(form.get("adminCollaboratorEmails"));
       state.projects.unshift({
-        id: `${slug(name) || "project"}-${nowId}`,
+        id: projectId,
         clientId: activeClient().id,
         name,
         status: form.get("status") || "review",
         description: form.get("description") || "Video delivery project.",
         archived: false,
       });
+      if (adminEmails.length) {
+        state.projectCollaborators[projectId] = adminEmails;
+      }
     }
 
     if (createIntent === "video") {
@@ -2710,7 +2891,7 @@ async function handleCreateFormSubmit(event) {
     let notifiedClient = false;
     if (pendingVersionNotice) {
       saveButton.textContent = "Checking invite...";
-      if (state.deliveredProjectIds.includes(pendingVersionNotice.project?.id)) {
+      if (projectRecipientEmails(pendingVersionNotice.project?.id).length) {
         saveButton.textContent = "Emailing client...";
         notifiedClient = await notifyClientOfNewVersion(pendingVersionNotice);
       }
@@ -2736,6 +2917,9 @@ async function handleCreateFormSubmit(event) {
     state.versions = previousData.versions;
     state.comments = previousData.comments;
     state.deliveredProjectIds = previousData.deliveredProjectIds;
+    state.projectRecipients = previousData.projectRecipients;
+    state.projectCollaborators = previousData.projectCollaborators;
+    state.projectAccessRows = previousData.projectAccessRows;
     state.selectedClientId = previousData.selectedClientId;
     state.selectedProjectId = previousData.selectedProjectId;
     state.selectedVideoId = previousData.selectedVideoId;
@@ -2772,14 +2956,6 @@ authModeToggle?.addEventListener("click", () => {
 document.querySelector("#openCreate").addEventListener("click", () => openDialog());
 document.querySelector("#closeDialog").addEventListener("click", () => dialog.close());
 document.querySelector("#cancelDialog").addEventListener("click", () => {
-  if (createIntent === "client" && clientDialogStep === "accounts") {
-    const form = new FormData(createForm);
-    renderClientDetailStep({
-      name: form.get("name") || "",
-      summary: form.get("summary") || "",
-    });
-    return;
-  }
   dialog.close();
 });
 deleteClientAction?.addEventListener("click", () => {

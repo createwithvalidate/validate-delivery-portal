@@ -58,7 +58,7 @@ module.exports = async function handler(request, response) {
 
   const token = authToken(request);
   if (!token) {
-    sendJson(response, 401, { error: "Sign in again before loading client accounts." });
+    sendJson(response, 401, { error: "Sign in again before loading accounts." });
     return;
   }
 
@@ -83,13 +83,12 @@ module.exports = async function handler(request, response) {
     const [profile] = await getRows("profiles", profileParams);
     const isAdmin = profile?.role === "admin" || userEmail === firstAdminEmail;
     if (!isAdmin) {
-      sendJson(response, 403, { error: "Only admins can view client accounts." });
+      sendJson(response, 403, { error: "Only admins can view accounts." });
       return;
     }
 
     const accountParams = new URLSearchParams({
       select: "id,email,full_name,role,created_at",
-      role: "eq.client",
       order: "created_at.desc",
     });
     const accounts = await getRows("profiles", accountParams);
@@ -104,6 +103,6 @@ module.exports = async function handler(request, response) {
       })),
     });
   } catch (error) {
-    sendJson(response, 502, { error: error.message || "Client accounts could not load." });
+    sendJson(response, 502, { error: error.message || "Accounts could not load." });
   }
 };
