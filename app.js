@@ -703,7 +703,9 @@ async function syncPortalData({ announce = false, rerender = true } = {}) {
     selectedClientId: state.selectedClientId,
     selectedProjectId: state.selectedProjectId,
     selectedVideoId: state.selectedVideoId,
+    selectedVersionId: state.selectedVersionId,
   };
+  const isWatchingReview = currentView === "adminReview" || currentView === "clientReview";
 
   try {
     await loadPortalDataFromSupabase();
@@ -719,6 +721,11 @@ async function syncPortalData({ announce = false, rerender = true } = {}) {
       )
         ? previousSelection.selectedVideoId
         : state.videos.find((video) => video.projectId === state.selectedProjectId)?.id || "";
+      state.selectedVersionId = state.versions.some(
+        (version) => version.id === previousSelection.selectedVersionId && version.videoId === state.selectedVideoId,
+      )
+        ? previousSelection.selectedVersionId
+        : state.selectedVersionId;
     } else {
       state.selectedClientId = state.clients.some((client) => client.id === previousSelection.selectedClientId)
         ? previousSelection.selectedClientId
@@ -729,12 +736,17 @@ async function syncPortalData({ announce = false, rerender = true } = {}) {
       state.selectedVideoId = state.videos.some((video) => video.id === previousSelection.selectedVideoId)
         ? previousSelection.selectedVideoId
         : state.videos.find((video) => video.projectId === state.selectedProjectId)?.id || "";
+      state.selectedVersionId = state.versions.some(
+        (version) => version.id === previousSelection.selectedVersionId && version.videoId === state.selectedVideoId,
+      )
+        ? previousSelection.selectedVersionId
+        : state.selectedVersionId;
     }
     const nextFingerprint = portalFingerprint();
     const hasChanged = nextFingerprint !== previousFingerprint;
     lastPortalFingerprint = nextFingerprint;
     saveState();
-    if (rerender && hasChanged) renderCurrentView();
+    if (rerender && hasChanged && !isWatchingReview) renderCurrentView();
     if (announce) showToast("Synced");
     return true;
   } catch (error) {
@@ -2408,8 +2420,12 @@ window.addEventListener("hashchange", () => {
 });
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden && !state.session) startLoginReel();
-  if (!document.hidden && state.session) syncPortalData({ rerender: true });
+  if (!document.hidden && state.session) {
+    const isWatchingReview = currentView === "adminReview" || currentView === "clientReview";
+    syncPortalData({ rerender: !isWatchingReview });
+  }
 });
 window.addEventListener("focus", () => {
-  syncPortalData({ rerender: true });
+  const isWatchingReview = currentView === "adminReview" || currentView === "clientReview";
+  syncPortalData({ rerender: !isWatchingReview });
 });
