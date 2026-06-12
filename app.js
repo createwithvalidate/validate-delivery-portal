@@ -814,11 +814,11 @@ async function syncPortalData({ announce = false, rerender = true } = {}) {
       state.selectedProjectId = invitedProjects.some((project) => project.id === previousSelection.selectedProjectId)
         ? previousSelection.selectedProjectId
         : invitedProjects[0]?.id || "";
-      state.selectedVideoId = state.videos.some(
-        (video) => video.id === previousSelection.selectedVideoId && video.projectId === state.selectedProjectId,
+      state.selectedVideoId = projectVideos(state.selectedProjectId).some(
+        (video) => video.id === previousSelection.selectedVideoId,
       )
         ? previousSelection.selectedVideoId
-        : state.videos.find((video) => video.projectId === state.selectedProjectId)?.id || "";
+        : projectVideos(state.selectedProjectId)[0]?.id || "";
       state.selectedVersionId = state.versions.some(
         (version) => version.id === previousSelection.selectedVersionId && version.videoId === state.selectedVideoId,
       )
@@ -831,9 +831,11 @@ async function syncPortalData({ announce = false, rerender = true } = {}) {
       state.selectedProjectId = state.projects.some((project) => project.id === previousSelection.selectedProjectId)
         ? previousSelection.selectedProjectId
         : state.projects.find((project) => project.clientId === state.selectedClientId)?.id || "";
-      state.selectedVideoId = state.videos.some((video) => video.id === previousSelection.selectedVideoId)
+      state.selectedVideoId = projectVideos(state.selectedProjectId).some(
+        (video) => video.id === previousSelection.selectedVideoId,
+      )
         ? previousSelection.selectedVideoId
-        : state.videos.find((video) => video.projectId === state.selectedProjectId)?.id || "";
+        : projectVideos(state.selectedProjectId)[0]?.id || "";
       state.selectedVersionId = state.versions.some(
         (version) => version.id === previousSelection.selectedVersionId && version.videoId === state.selectedVideoId,
       )
@@ -883,9 +885,9 @@ async function saveAndReloadPortalData() {
   state.selectedProjectId = state.projects.some((project) => project.id === previousSelection.selectedProjectId)
     ? previousSelection.selectedProjectId
     : state.projects.find((project) => project.clientId === state.selectedClientId)?.id || "";
-  state.selectedVideoId = state.videos.some((video) => video.id === previousSelection.selectedVideoId)
+  state.selectedVideoId = projectVideos(state.selectedProjectId).some((video) => video.id === previousSelection.selectedVideoId)
     ? previousSelection.selectedVideoId
-    : state.videos.find((video) => video.projectId === state.selectedProjectId)?.id || "";
+    : projectVideos(state.selectedProjectId)[0]?.id || "";
   lastPortalFingerprint = portalFingerprint();
   saveState();
 }
@@ -1185,9 +1187,10 @@ function activeProject() {
 }
 
 function activeVideo() {
+  const projectId = activeProject()?.id;
   return (
-    state.videos.find((video) => video.id === state.selectedVideoId) ||
-    state.videos.find((video) => video.projectId === activeProject()?.id)
+    projectVideos(projectId).find((video) => video.id === state.selectedVideoId) ||
+    projectVideos(projectId)[0]
   );
 }
 
@@ -1196,7 +1199,13 @@ function latestVersion(videoId = activeVideo()?.id) {
 }
 
 function projectVideos(projectId) {
-  return state.videos.filter((video) => video.projectId === projectId);
+  if (!projectId) return [];
+  return state.videos.filter((video) => video.projectId === projectId && video.status !== "image");
+}
+
+function projectImages(projectId) {
+  if (!projectId) return [];
+  return state.videos.filter((video) => video.projectId === projectId && video.status === "image");
 }
 
 function videoVersions(videoId) {
@@ -1205,6 +1214,32 @@ function videoVersions(videoId) {
 
 function projectVersionCount(projectId) {
   return projectVideos(projectId).reduce((total, video) => total + videoVersions(video.id).length, 0);
+}
+
+function renderProjectImageGrid(images, { emptyText = "No project images yet." } = {}) {
+  if (!images.length) {
+    return `<div class="empty compact-empty">${emptyText}</div>`;
+  }
+
+  return `
+    <div class="image-grid">
+      ${images
+        .map(
+          (image) => `
+            <a class="image-tile" href="${escapeHtml(image.due || "#")}" target="_blank" rel="noreferrer">
+              <span class="image-preview">
+                <img src="${escapeHtml(image.due || "")}" alt="${escapeHtml(image.title)}" loading="lazy" />
+              </span>
+              <span class="image-tile-copy">
+                <strong>${escapeHtml(image.title)}</strong>
+                <span>Project image</span>
+              </span>
+            </a>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
 }
 
 function reviewProjectIdFromHash() {
@@ -1644,6 +1679,7 @@ function renderProjects() {
                 .map(
                   (project) => {
                     const videos = projectVideos(project.id);
+                    const images = projectImages(project.id);
                     const versions = projectVersionCount(project.id);
                     return `
                       <div class="list-row project-row">
@@ -1653,6 +1689,7 @@ function renderProjects() {
                           <div class="meta-strip">
                             <span>${videos.length} videos</span>
                             <span>${versions} versions</span>
+                            <span>${images.length} images</span>
                           </div>
                         </div>
                         <div class="inline-actions">
@@ -1674,7 +1711,7 @@ function renderProjects() {
   root.querySelectorAll("[data-project]").forEach((button) => {
     button.addEventListener("click", () => {
       state.selectedProjectId = button.dataset.project;
-      const video = state.videos.find((item) => item.projectId === state.selectedProjectId);
+      const video = projectVideos(state.selectedProjectId)[0];
       if (video) state.selectedVideoId = video.id;
       saveState();
       renderProjectDetail();
@@ -1711,7 +1748,8 @@ function renderProjectDetail() {
   }
 
   const client = state.clients.find((item) => item.id === project.clientId);
-  const videos = state.videos.filter((video) => video.projectId === project.id);
+  const videos = projectVideos(project.id);
+  const images = projectImages(project.id);
   const isInvited = state.deliveredProjectIds.includes(project.id);
   const canInvite = Boolean(clientEmails(client).length);
   const sendStatus = !canInvite
@@ -1731,6 +1769,14 @@ function renderProjectDetail() {
           <h2>${project.name}</h2>
           <p class="muted">${project.description}</p>
         </div>
+        <div class="media-section">
+          <div class="media-section-head">
+            <div>
+              <p class="eyebrow">Videos</p>
+              <h3>Versioned cuts</h3>
+            </div>
+            <span>${videos.length} video${videos.length === 1 ? "" : "s"}</span>
+          </div>
         <div class="stack">
           ${videos
             .map((video) => {
@@ -1754,6 +1800,17 @@ function renderProjectDetail() {
             })
             .join("") || `<div class="empty compact-empty">No videos yet. Upload a version or add a video to start review.</div>`}
         </div>
+        </div>
+        <div class="media-section">
+          <div class="media-section-head">
+            <div>
+              <p class="eyebrow">Images</p>
+              <h3>Project references</h3>
+            </div>
+            <span>${images.length} image${images.length === 1 ? "" : "s"}</span>
+          </div>
+          ${renderProjectImageGrid(images)}
+        </div>
       </section>
       <aside class="panel stack">
         <p class="eyebrow">Delivery actions</p>
@@ -1762,7 +1819,9 @@ function renderProjectDetail() {
           <span>${sendStatus}</span>
         </div>
         <button class="primary-button" id="sendClient" ${canInvite ? "" : "disabled"}>${isInvited ? "Resend project invite" : "Invite client to project"}</button>
+        <button class="ghost-button" id="addVideo">Add video</button>
         <button class="ghost-button" id="addVersion">Upload new version</button>
+        <button class="ghost-button" id="addImage">Add image</button>
         <button class="ghost-button" id="backProjects">Back to client</button>
         <p class="muted">After a project is invited, new uploaded versions automatically email the client.</p>
       </aside>
@@ -1780,6 +1839,8 @@ function renderProjectDetail() {
     inviteProjectClient(event.currentTarget);
   });
   root.querySelector("#addVersion").addEventListener("click", () => openDialog("version"));
+  root.querySelector("#addVideo").addEventListener("click", () => openDialog("video"));
+  root.querySelector("#addImage").addEventListener("click", () => openDialog("image"));
   root.querySelector("#backProjects").addEventListener("click", renderProjects);
 }
 
@@ -1824,6 +1885,7 @@ function renderClientDashboard() {
             ? projects
                 .map((project) => {
                   const videos = projectVideos(project.id);
+                  const images = projectImages(project.id);
                   const versions = videos.flatMap((video) => videoVersions(video.id));
                   const latest = versions[0];
                   const approvedCount = versions.filter((version) => version.approved).length;
@@ -1839,12 +1901,13 @@ function renderClientDashboard() {
                       <div class="meta-strip">
                         <span>${videos.length} video${videos.length === 1 ? "" : "s"}</span>
                         <span>${versions.length} version${versions.length === 1 ? "" : "s"}</span>
+                        <span>${images.length} image${images.length === 1 ? "" : "s"}</span>
                         <span>${noteCount} note${noteCount === 1 ? "" : "s"}</span>
                       </div>
                       <div class="card-footer">
                         <span class="metric">${latest?.approved ? "approved" : approvedCount ? `${approvedCount} approved` : "in review"}</span>
-                        <button class="ghost-button" data-client-project="${project.id}" ${videos.length ? "" : "disabled"}>
-                          ${videos.length ? "Open project" : "No videos yet"}
+                        <button class="ghost-button" data-client-project="${project.id}" ${videos.length || images.length ? "" : "disabled"}>
+                          ${videos.length || images.length ? "Open project" : "No media yet"}
                         </button>
                       </div>
                     </article>
@@ -1900,6 +1963,7 @@ function renderClientProject() {
   }
 
   const videos = projectVideos(project.id);
+  const images = projectImages(project.id);
   const versionItems = videos.flatMap((video) =>
     videoVersions(video.id).map((version) => ({
       video,
@@ -1913,12 +1977,20 @@ function renderClientProject() {
     <section class="workspace-panel">
       <div class="workspace-head">
         <div>
-          <p class="eyebrow">Versions</p>
-          <h2>Choose a cut to review.</h2>
-          <p class="muted">${project.description || "Open any version below to watch, comment, and approve."}</p>
+          <p class="eyebrow">Project media</p>
+          <h2>Review videos and images.</h2>
+          <p class="muted">${project.description || "Open a video version to watch, comment, and approve. Images stay here for reference."}</p>
         </div>
         <button class="ghost-button" type="button" id="backClientDashboard">Back to projects</button>
       </div>
+      <div class="media-section">
+        <div class="media-section-head">
+          <div>
+            <p class="eyebrow">Videos</p>
+            <h3>Versions</h3>
+          </div>
+          <span>${versionItems.length} version${versionItems.length === 1 ? "" : "s"}</span>
+        </div>
       <div class="project-list">
         ${
           versionItems.length
@@ -1941,6 +2013,17 @@ function renderClientProject() {
                 .join("")
             : `<div class="empty compact-empty">No versions are ready for this project yet.</div>`
         }
+      </div>
+      </div>
+      <div class="media-section">
+        <div class="media-section-head">
+          <div>
+            <p class="eyebrow">Images</p>
+            <h3>Project references</h3>
+          </div>
+          <span>${images.length} image${images.length === 1 ? "" : "s"}</span>
+        </div>
+        ${renderProjectImageGrid(images, { emptyText: "No project images are ready yet." })}
       </div>
     </section>
   `;
@@ -2332,6 +2415,10 @@ function openDialog(intent = createIntent) {
       ["embedUrl", "Embed URL", ""],
       ["note", "Version note", "First cut for review."],
     ],
+    image: [
+      ["title", "Image title", "Storyboard frame"],
+      ["imageUrl", "Image URL", "https://example.com/frame.jpg"],
+    ],
     version: [
       ["label", "Version label", "Version 4"],
       ["provider", "Provider", "Bunny Stream"],
@@ -2360,7 +2447,7 @@ function openDialog(intent = createIntent) {
     return;
   }
 
-  if ((intent === "video" || intent === "version") && !activeProject()) {
+  if ((intent === "video" || intent === "version" || intent === "image") && !activeProject()) {
     showToast("Open a project before uploading");
     return;
   }
@@ -2369,6 +2456,7 @@ function openDialog(intent = createIntent) {
     client: "New client",
     project: "New project",
     video: "Add video",
+    image: "Add image",
     version: "Upload new version",
   }[intent];
   dialogEyebrow.hidden = false;
@@ -2399,6 +2487,8 @@ function openDialog(intent = createIntent) {
               ? `<textarea name="${name}" placeholder="${placeholder}"></textarea>`
               : name === "file"
                 ? `<input name="${name}" type="file" accept="video/*" />`
+                : name === "imageUrl"
+                  ? `<input name="${name}" type="url" placeholder="${placeholder}" />`
                 : `<input name="${name}" placeholder="${placeholder}" />`
           }
         </label>
@@ -2531,11 +2621,24 @@ async function handleCreateFormSubmit(event) {
       }
     }
 
+    if (createIntent === "image") {
+      const title = form.get("title") || "Project image";
+      const imageUrl = String(form.get("imageUrl") || "").trim();
+      if (!imageUrl) throw new Error("Paste an image URL before saving.");
+      state.videos.unshift({
+        id: `${slug(title) || "image"}-${nowId}`,
+        projectId: activeProject().id,
+        title,
+        status: "image",
+        due: imageUrl,
+      });
+    }
+
     if (createIntent === "version") {
       const project = activeProject();
       let video =
-        state.videos.find((item) => item.id === state.selectedVideoId && item.projectId === project?.id) ||
-        state.videos.find((item) => item.projectId === project?.id);
+        projectVideos(project?.id).find((item) => item.id === state.selectedVideoId) ||
+        projectVideos(project?.id)[0];
       if (!video) {
         if (!project) throw new Error("Open a project before uploading");
         const title = project.name || "New Video";
@@ -2591,7 +2694,7 @@ async function handleCreateFormSubmit(event) {
       };
     }
 
-    saveButton.textContent = "Saving version...";
+    saveButton.textContent = uploadsVideo ? "Saving version..." : createIntent === "image" ? "Saving image..." : "Saving...";
     await saveAndReloadPortalData();
     let notifiedClient = false;
     if (pendingVersionNotice) {
@@ -2605,7 +2708,7 @@ async function handleCreateFormSubmit(event) {
     createForm.reset();
     showToast(notifiedClient ? "Video saved and client emailed" : uploadsVideo ? "Video saved" : "Saved");
     if (createIntent === "project") renderProjects();
-    else if (createIntent === "video") renderProjectDetail();
+    else if (createIntent === "video" || createIntent === "image") renderProjectDetail();
     else if (createIntent === "version") renderReviewShell(state.mode === "admin");
     else renderClients();
   } catch (error) {
