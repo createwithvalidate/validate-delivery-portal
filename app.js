@@ -2084,7 +2084,6 @@ function renderProjectDetail() {
   const videos = projectVideos(project.id);
   const images = projectImages(project.id);
   const recipients = projectRecipientEmails(project.id);
-  const collaborators = projectCollaboratorEmails(project.id);
   const isShared = recipients.length > 0;
   const sendStatus = isShared
     ? `${recipients.length} client account${recipients.length === 1 ? "" : "s"} will receive update notices.`
@@ -2141,11 +2140,6 @@ function renderProjectDetail() {
           </div>
           ${renderProjectAccessList(recipients)}
         </div>
-        <div class="action-divider"></div>
-        <p class="eyebrow">Admins</p>
-        <p class="muted">${collaborators.length ? `${collaborators.length} admin collaborator${collaborators.length === 1 ? "" : "s"} on this project.` : "Only your admin account is collaborating."}</p>
-        <button class="ghost-button" id="manageAdmins">Add admins</button>
-        <button class="ghost-button" id="backProjects">Back to client</button>
       </aside>
     </div>
   `;
@@ -2165,12 +2159,8 @@ function renderProjectDetail() {
   root.querySelector("#manageClients").addEventListener("click", () => {
     openProjectShareDialog();
   });
-  root.querySelector("#manageAdmins").addEventListener("click", () => {
-    openProjectAdminsDialog();
-  });
   root.querySelector("#addVideo").addEventListener("click", () => openDialog("video"));
   root.querySelector("#addImage").addEventListener("click", () => openDialog("image"));
-  root.querySelector("#backProjects").addEventListener("click", renderProjects);
 }
 
 function renderAdminReview() {

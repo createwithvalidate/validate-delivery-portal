@@ -1299,6 +1299,8 @@ button:disabled {
 .access-list {
   display: grid;
   gap: 7px;
+  max-height: none;
+  overflow: visible;
 }
 
 .access-row,
