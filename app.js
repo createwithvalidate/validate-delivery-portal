@@ -63,6 +63,7 @@ const toast = document.querySelector("#toast");
 let route = state.route || "clients";
 let currentView = state.currentView || "clients";
 let createIntent = "client";
+let clientDialogStep = "details";
 let loginRole = "client";
 let authMode = "signin";
 let reelKeepalive = null;
@@ -2259,8 +2260,56 @@ function setupClientAccountPicker() {
     });
 }
 
+function renderClientDetailStep({ name = "", summary = "" } = {}) {
+  clientDialogStep = "details";
+  dialogTitle.textContent = "New client";
+  createSubmit.textContent = "Next";
+  document.querySelector("#cancelDialog").textContent = "Cancel";
+  dialogFields.innerHTML = `
+    <label>
+      Client name
+      <input name="name" placeholder="Silver Dollar City" value="${escapeHtml(name)}" />
+    </label>
+    <label>
+      Summary
+      <textarea name="summary" placeholder="Commercial campaign and brand films.">${escapeHtml(summary)}</textarea>
+    </label>
+  `;
+}
+
+function renderClientAccountStep({ name, summary }) {
+  clientDialogStep = "accounts";
+  dialogTitle.textContent = "Choose accounts";
+  createSubmit.textContent = "Save";
+  document.querySelector("#cancelDialog").textContent = "Back";
+  dialogFields.innerHTML = `
+    <input name="name" type="hidden" value="${escapeHtml(name)}" />
+    <input name="summary" type="hidden" value="${escapeHtml(summary)}" />
+    <div class="client-step-summary">
+      <p class="eyebrow">Client workspace</p>
+      <h3>${escapeHtml(name)}</h3>
+      <p>${escapeHtml(summary || "New client workspace.")}</p>
+    </div>
+    <div class="account-picker">
+      <div class="account-picker-head">
+        <label>
+          Choose client accounts
+          <input id="accountSearch" type="search" placeholder="Search created accounts" autocomplete="off" />
+        </label>
+        <span id="accountSelectedCount">No accounts selected</span>
+      </div>
+      <input id="clientAccountEmails" name="clientAccountEmails" type="hidden" />
+      <div class="account-options" id="accountOptions">
+        <div class="account-empty">Loading client accounts...</div>
+      </div>
+    </div>
+  `;
+  setupClientAccountPicker();
+}
+
 function openDialog(intent = createIntent) {
   createIntent = intent;
+  clientDialogStep = intent === "client" ? "details" : "";
   const fields = {
     client: [
       ["name", "Client name", "Silver Dollar City"],
@@ -2323,8 +2372,15 @@ function openDialog(intent = createIntent) {
     createSubmit.textContent = intent === "version" || intent === "video" ? "Upload" : "Save";
     createSubmit.disabled = false;
   }
+  document.querySelector("#cancelDialog").textContent = "Cancel";
 
   createForm.reset();
+
+  if (intent === "client") {
+    renderClientDetailStep();
+    dialog.showModal();
+    return;
+  }
 
   dialogFields.innerHTML = fields[intent]
     .map(
@@ -2343,28 +2399,6 @@ function openDialog(intent = createIntent) {
     )
     .join("");
 
-  if (intent === "client") {
-    dialogFields.insertAdjacentHTML(
-      "beforeend",
-      `
-        <div class="account-picker">
-          <div class="account-picker-head">
-            <label>
-              Choose client accounts
-              <input id="accountSearch" type="search" placeholder="Search created accounts" autocomplete="off" />
-            </label>
-            <span id="accountSelectedCount">No accounts selected</span>
-          </div>
-          <input id="clientAccountEmails" name="clientAccountEmails" type="hidden" />
-          <div class="account-options" id="accountOptions">
-            <div class="account-empty">Loading client accounts...</div>
-          </div>
-        </div>
-      `,
-    );
-    setupClientAccountPicker();
-  }
-
   dialog.showModal();
 }
 
@@ -2372,6 +2406,15 @@ async function handleCreateFormSubmit(event) {
   event.preventDefault();
   event.stopPropagation();
   if (isSavingCreateForm) return;
+
+  if (createIntent === "client" && clientDialogStep === "details") {
+    const form = new FormData(createForm);
+    const name = String(form.get("name") || "").trim() || "New Client";
+    const summary = String(form.get("summary") || "").trim() || "New client workspace.";
+    renderClientAccountStep({ name, summary });
+    return;
+  }
+
   isSavingCreateForm = true;
   const form = new FormData(createForm);
   const nowId = Date.now();
@@ -2600,7 +2643,17 @@ authModeToggle?.addEventListener("click", () => {
 
 document.querySelector("#openCreate").addEventListener("click", () => openDialog());
 document.querySelector("#closeDialog").addEventListener("click", () => dialog.close());
-document.querySelector("#cancelDialog").addEventListener("click", () => dialog.close());
+document.querySelector("#cancelDialog").addEventListener("click", () => {
+  if (createIntent === "client" && clientDialogStep === "accounts") {
+    const form = new FormData(createForm);
+    renderClientDetailStep({
+      name: form.get("name") || "",
+      summary: form.get("summary") || "",
+    });
+    return;
+  }
+  dialog.close();
+});
 document.querySelector("#signOut").addEventListener("click", async () => {
   try {
     await getSupabase()?.auth.signOut();
