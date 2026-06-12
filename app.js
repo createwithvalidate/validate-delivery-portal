@@ -2287,15 +2287,15 @@ function renderClientAccountStep({ name, summary }) {
     <input name="summary" type="hidden" value="${escapeHtml(summary)}" />
     <div class="account-picker">
       <div class="account-picker-head">
-        <label>
-          Choose client accounts
-          <input id="accountSearch" type="search" placeholder="Search created accounts" autocomplete="off" />
-        </label>
+        <span>Choose client accounts</span>
         <span id="accountSelectedCount">No accounts selected</span>
       </div>
       <input id="clientAccountEmails" name="clientAccountEmails" type="hidden" />
-      <div class="account-options" id="accountOptions">
-        <div class="account-empty">Loading client accounts...</div>
+      <div class="account-box">
+        <input id="accountSearch" type="search" placeholder="Search created accounts" autocomplete="off" />
+        <div class="account-options" id="accountOptions">
+          <div class="account-empty">Loading client accounts...</div>
+        </div>
       </div>
     </div>
   `;

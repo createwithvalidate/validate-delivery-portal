@@ -1283,8 +1283,10 @@ textarea {
 }
 
 .account-picker-head {
-  display: grid;
-  gap: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
 }
 
 .account-picker-head > span {
@@ -1295,15 +1297,30 @@ textarea {
   text-transform: uppercase;
 }
 
-.account-options {
+.account-picker-head > span:first-child {
+  color: var(--muted);
+}
+
+.account-box {
   display: grid;
   gap: 8px;
-  max-height: 230px;
-  overflow: auto;
   padding: 8px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: rgba(255, 255, 255, 0.025);
+}
+
+.account-box input[type="search"] {
+  min-height: 42px;
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.account-options {
+  display: grid;
+  gap: 8px;
+  max-height: 238px;
+  overflow: auto;
 }
 
 .account-option {
@@ -1317,6 +1334,7 @@ textarea {
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.035);
   color: var(--text);
+  cursor: pointer;
 }
 
 .account-option:hover,
@@ -1326,9 +1344,25 @@ textarea {
 }
 
 .account-option input {
-  width: 18px;
-  min-height: 18px;
+  position: relative;
+  width: 20px;
+  min-width: 20px;
+  height: 20px;
+  min-height: 20px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  border-radius: 50%;
+  appearance: none;
+  background: rgba(255, 255, 255, 0.03);
   accent-color: var(--text);
+}
+
+.account-option input:checked {
+  border-color: var(--text);
+  background:
+    radial-gradient(circle at center, var(--text) 0 42%, transparent 46%),
+    rgba(255, 255, 255, 0.06);
 }
 
 .account-option-main {
