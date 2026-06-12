@@ -1284,7 +1284,7 @@ textarea {
 
 .account-picker-head {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
   gap: 12px;
 }
@@ -1295,10 +1295,6 @@ textarea {
   font-weight: 800;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-}
-
-.account-picker-head > span:first-child {
-  color: var(--muted);
 }
 
 .account-box {

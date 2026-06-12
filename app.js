@@ -56,6 +56,7 @@ const sessionLabel = document.querySelector("#sessionLabel");
 const dialog = document.querySelector("#createDialog");
 const dialogTitle = document.querySelector("#dialogTitle");
 const dialogFields = document.querySelector("#dialogFields");
+const dialogEyebrow = document.querySelector("#createDialog .modal-head .eyebrow");
 const createForm = document.querySelector("#createForm");
 const createSubmit = document.querySelector("#createSubmit");
 const toast = document.querySelector("#toast");
@@ -2263,6 +2264,8 @@ function setupClientAccountPicker() {
 
 function renderClientDetailStep({ name = "", summary = "" } = {}) {
   clientDialogStep = "details";
+  dialogEyebrow.hidden = false;
+  dialogEyebrow.textContent = "Create";
   dialogTitle.textContent = "New client";
   createSubmit.textContent = "Next";
   document.querySelector("#cancelDialog").textContent = "Cancel";
@@ -2280,6 +2283,7 @@ function renderClientDetailStep({ name = "", summary = "" } = {}) {
 
 function renderClientAccountStep({ name, summary }) {
   clientDialogStep = "accounts";
+  dialogEyebrow.hidden = true;
   dialogTitle.textContent = "Choose accounts";
   createSubmit.textContent = "Save";
   document.querySelector("#cancelDialog").textContent = "Back";
@@ -2288,7 +2292,6 @@ function renderClientAccountStep({ name, summary }) {
     <input name="summary" type="hidden" value="${escapeHtml(summary)}" />
     <div class="account-picker">
       <div class="account-picker-head">
-        <span>Choose client accounts</span>
         <span id="accountSelectedCount">No accounts selected</span>
       </div>
       <input id="clientAccountEmails" name="clientAccountEmails" type="hidden" />
@@ -2364,6 +2367,8 @@ function openDialog(intent = createIntent) {
     video: "Add video",
     version: "Upload new version",
   }[intent];
+  dialogEyebrow.hidden = false;
+  dialogEyebrow.textContent = "Create";
   if (createSubmit) {
     createSubmit.textContent = intent === "version" || intent === "video" ? "Upload" : "Save";
     createSubmit.disabled = false;
