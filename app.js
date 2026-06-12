@@ -1786,6 +1786,12 @@ function renderClientProject() {
   }
 
   const videos = projectVideos(project.id);
+  const versionItems = videos.flatMap((video) =>
+    videoVersions(video.id).map((version) => ({
+      video,
+      version,
+    })),
+  );
   setPageHeader(project.name, "Project review", "client");
   document.querySelector("#openCreate").hidden = true;
 
@@ -1801,48 +1807,25 @@ function renderClientProject() {
       </div>
       <div class="project-list">
         ${
-          videos.length
-            ? videos
-                .map((video) => {
-                  const versions = videoVersions(video.id);
-                  return `
-                    <div class="client-project-block">
-                      <div class="client-project-head">
-                        <div>
-                          <p class="eyebrow">${video.status}</p>
-                          <h3>${video.title}</h3>
-                          <p class="muted">${versions.length} version${versions.length === 1 ? "" : "s"} available</p>
+          versionItems.length
+            ? versionItems
+                .map(
+                  ({ video, version }) => `
+                    <button class="version-row version-select" type="button" data-client-version="${version.id}" data-client-video="${video.id}">
+                      <div>
+                        <h3>${version.label}</h3>
+                        <p class="muted">${version.note || "Open this version to review."}</p>
+                        <div class="meta-strip">
+                          <span>${version.createdAt}</span>
+                          <span>${state.comments.filter((comment) => comment.versionId === version.id).length} comments</span>
                         </div>
-                        <span class="metric">${versions.some((version) => version.approved) ? "approved" : "in review"}</span>
                       </div>
-                      <div class="project-list">
-                        ${
-                          versions.length
-                            ? versions
-                                .map(
-                                  (version) => `
-                                    <button class="version-row version-select" type="button" data-client-version="${version.id}" data-client-video="${video.id}">
-                                      <div>
-                                        <h3>${version.label}</h3>
-                                        <p class="muted">${version.note || "Open this version to review."}</p>
-                                        <div class="meta-strip">
-                                          <span>${version.createdAt}</span>
-                                          <span>${state.comments.filter((comment) => comment.versionId === version.id).length} comments</span>
-                                        </div>
-                                      </div>
-                                      <span class="status-pill ${version.approved ? "approved" : ""}">${version.approved ? "approved" : "open review"}</span>
-                                    </button>
-                                  `,
-                                )
-                                .join("")
-                            : `<div class="empty compact-empty">No versions are ready for this video yet.</div>`
-                        }
-                      </div>
-                    </div>
-                  `;
-                })
+                      <span class="status-pill ${version.approved ? "approved" : ""}">${version.approved ? "approved" : "open review"}</span>
+                    </button>
+                  `,
+                )
                 .join("")
-            : `<div class="empty compact-empty">No videos are ready for this project yet.</div>`
+            : `<div class="empty compact-empty">No versions are ready for this project yet.</div>`
         }
       </div>
     </section>
