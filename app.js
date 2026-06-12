@@ -1894,7 +1894,29 @@ function renderReviewShell(isAdmin) {
             <span class="status-pill ${version?.approved ? "approved" : ""}">${version?.approved ? "approved" : "in review"}</span>
           </div>
         </div>
-        <div class="panel comments-panel">
+      </section>
+      <aside class="panel stack review-side-panel">
+        <p class="eyebrow">Version history</p>
+        ${
+          versions.length
+            ? versions
+                .map(
+                  (item) => `
+                    <button class="version-row version-select ${item.id === version?.id ? "active" : ""}" type="button" data-review-version="${item.id}">
+                      <div>
+                        <h3>${item.label}</h3>
+                        <p class="muted">${item.createdAt}</p>
+                      </div>
+                      <span class="status-pill ${item.approved ? "approved" : ""}">${item.approved ? "approved" : item.provider}</span>
+                    </button>
+                  `,
+                )
+                .join("")
+            : `<div class="empty compact-empty">No versions uploaded yet.</div>`
+        }
+        <button class="primary-button" id="approveVersion" ${version ? "" : "disabled"}>${version?.approved ? "Approved" : "Mark approved"}</button>
+        ${isAdmin ? `<button class="ghost-button" id="backProject">Back to project</button>` : `<button class="ghost-button" id="backClientProject">Back to project</button>`}
+        <div class="comments-panel">
           <p class="eyebrow">Comments</p>
           ${
             comments.length
@@ -1919,28 +1941,6 @@ function renderReviewShell(isAdmin) {
             <button class="primary-button" ${version ? "" : "disabled"}>Add comment</button>
           </form>
         </div>
-      </section>
-      <aside class="panel stack review-side-panel">
-        <p class="eyebrow">Version history</p>
-        ${
-          versions.length
-            ? versions
-                .map(
-                  (item) => `
-                    <button class="version-row version-select ${item.id === version?.id ? "active" : ""}" type="button" data-review-version="${item.id}">
-                      <div>
-                        <h3>${item.label}</h3>
-                        <p class="muted">${item.createdAt}</p>
-                      </div>
-                      <span class="status-pill ${item.approved ? "approved" : ""}">${item.approved ? "approved" : item.provider}</span>
-                    </button>
-                  `,
-                )
-                .join("")
-            : `<div class="empty compact-empty">No versions uploaded yet.</div>`
-        }
-        <button class="primary-button" id="approveVersion" ${version ? "" : "disabled"}>${version?.approved ? "Approved" : "Mark approved"}</button>
-        ${isAdmin ? `<button class="ghost-button" id="backProject">Back to project</button>` : `<button class="ghost-button" id="backClientProject">Back to project</button>`}
       </aside>
     </div>
   `;
