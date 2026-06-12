@@ -2264,7 +2264,6 @@ function openDialog(intent = createIntent) {
   const fields = {
     client: [
       ["name", "Client name", "Silver Dollar City"],
-      ["contact", "Contact", "Megan Carter"],
       ["summary", "Summary", "Commercial campaign and brand films."],
     ],
     project: [
@@ -2351,8 +2350,8 @@ function openDialog(intent = createIntent) {
         <div class="account-picker">
           <div class="account-picker-head">
             <label>
-              Client accounts
-              <input id="accountSearch" type="search" placeholder="Search by name or email" autocomplete="off" />
+              Choose client accounts
+              <input id="accountSearch" type="search" placeholder="Search created accounts" autocomplete="off" />
             </label>
             <span id="accountSelectedCount">No accounts selected</span>
           </div>
@@ -2403,10 +2402,17 @@ async function handleCreateFormSubmit(event) {
       if (!selectedEmails.length) {
         throw new Error("Choose at least one client account for this workspace.");
       }
+      const selectedAccounts = selectedEmails
+        .map((email) => state.accountDirectory.find((account) => normalizeEmail(account.email) === email))
+        .filter(Boolean);
+      const contact =
+        selectedAccounts.length > 1
+          ? `${selectedAccounts[0].fullName || selectedEmails[0]} + ${selectedAccounts.length - 1} more`
+          : selectedAccounts[0]?.fullName || selectedEmails[0] || "Client account";
       state.clients.push({
         id: `${slug(name) || "client"}-${nowId}`,
         name,
-        contact: form.get("contact") || "Primary contact",
+        contact,
         email: selectedEmails.join(","),
         summary: form.get("summary") || "New client workspace.",
         archived: false,
