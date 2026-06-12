@@ -5,6 +5,7 @@ const seedData = {
   selectedClientId: "",
   selectedProjectId: "",
   selectedVideoId: "",
+  selectedVersionId: "",
   clients: [],
   projects: [],
   videos: [],
@@ -25,6 +26,7 @@ state.session ??= null;
 state.clientAccount ??= null;
 state.deliveredProjectIds ??= [];
 state.portalMeta ??= null;
+state.selectedVersionId ??= "";
 state.portalLoading ??= false;
 const root = document.querySelector("#viewRoot");
 const pageTitle = document.querySelector("#pageTitle");
@@ -807,6 +809,7 @@ function renderCurrentView() {
 
   if (state.mode === "client") {
     if (currentView === "clientReview" && state.selectedVideoId) renderClientReview();
+    else if (currentView === "clientProject" && state.selectedProjectId) renderClientProject();
     else renderClientDashboard();
     return;
   }
@@ -1759,13 +1762,98 @@ function renderClientDashboard() {
   root.querySelectorAll("[data-client-project]").forEach((button) => {
     button.addEventListener("click", () => {
       const projectId = button.dataset.clientProject;
-      const video = projectVideos(projectId)[0];
-      if (!video) {
-        showToast("No videos are ready for this project yet");
-        return;
-      }
       state.selectedProjectId = projectId;
-      state.selectedVideoId = video.id;
+      state.selectedVideoId = "";
+      state.selectedVersionId = "";
+      saveState();
+      renderClientProject();
+    });
+  });
+}
+
+function renderClientProject() {
+  currentView = "clientProject";
+  dashboardHero.hidden = true;
+  const deliveredProjectIds = new Set(state.deliveredProjectIds);
+  const project = state.projects.find(
+    (item) => item.id === state.selectedProjectId && !item.archived && deliveredProjectIds.has(item.id),
+  );
+
+  if (!project) {
+    showToast("Project is not available for this account");
+    renderClientDashboard();
+    return;
+  }
+
+  const videos = projectVideos(project.id);
+  setPageHeader(project.name, "Project review", "client");
+  document.querySelector("#openCreate").hidden = true;
+
+  root.innerHTML = `
+    <section class="workspace-panel">
+      <div class="workspace-head">
+        <div>
+          <p class="eyebrow">Versions</p>
+          <h2>Choose a cut to review.</h2>
+          <p class="muted">${project.description || "Open any version below to watch, comment, and approve."}</p>
+        </div>
+        <button class="ghost-button" type="button" id="backClientDashboard">Back to projects</button>
+      </div>
+      <div class="project-list">
+        ${
+          videos.length
+            ? videos
+                .map((video) => {
+                  const versions = videoVersions(video.id);
+                  return `
+                    <div class="client-project-block">
+                      <div class="client-project-head">
+                        <div>
+                          <p class="eyebrow">${video.status}</p>
+                          <h3>${video.title}</h3>
+                          <p class="muted">${versions.length} version${versions.length === 1 ? "" : "s"} available</p>
+                        </div>
+                        <span class="metric">${versions.some((version) => version.approved) ? "approved" : "in review"}</span>
+                      </div>
+                      <div class="project-list">
+                        ${
+                          versions.length
+                            ? versions
+                                .map(
+                                  (version) => `
+                                    <button class="version-row version-select" type="button" data-client-version="${version.id}" data-client-video="${video.id}">
+                                      <div>
+                                        <h3>${version.label}</h3>
+                                        <p class="muted">${version.note || "Open this version to review."}</p>
+                                        <div class="meta-strip">
+                                          <span>${version.createdAt}</span>
+                                          <span>${state.comments.filter((comment) => comment.versionId === version.id).length} comments</span>
+                                        </div>
+                                      </div>
+                                      <span class="status-pill ${version.approved ? "approved" : ""}">${version.approved ? "approved" : "open review"}</span>
+                                    </button>
+                                  `,
+                                )
+                                .join("")
+                            : `<div class="empty compact-empty">No versions are ready for this video yet.</div>`
+                        }
+                      </div>
+                    </div>
+                  `;
+                })
+                .join("")
+            : `<div class="empty compact-empty">No videos are ready for this project yet.</div>`
+        }
+      </div>
+    </section>
+  `;
+
+  root.querySelector("#backClientDashboard")?.addEventListener("click", renderClientDashboard);
+  root.querySelectorAll("[data-client-version]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.selectedProjectId = project.id;
+      state.selectedVideoId = button.dataset.clientVideo;
+      state.selectedVersionId = button.dataset.clientVersion;
       saveState();
       renderClientReview();
     });
@@ -1795,7 +1883,7 @@ function renderReviewShell(isAdmin) {
 
   const project = state.projects.find((item) => item.id === video.projectId);
   const versions = state.versions.filter((version) => version.videoId === video.id);
-  const version = versions[0];
+  const version = versions.find((item) => item.id === state.selectedVersionId) || versions[0];
   const comments = state.comments.filter((comment) => comment.versionId === version?.id);
   setPageHeader(isAdmin ? video.title : project.name);
   document.querySelector("#openCreate").textContent = isAdmin ? "Add version" : "Approve";
@@ -1856,23 +1944,31 @@ function renderReviewShell(isAdmin) {
             ? versions
                 .map(
                   (item) => `
-                    <div class="version-row">
+                    <button class="version-row version-select ${item.id === version?.id ? "active" : ""}" type="button" data-review-version="${item.id}">
                       <div>
                         <h3>${item.label}</h3>
                         <p class="muted">${item.createdAt}</p>
                       </div>
                       <span class="status-pill ${item.approved ? "approved" : ""}">${item.approved ? "approved" : item.provider}</span>
-                    </div>
+                    </button>
                   `,
                 )
                 .join("")
             : `<div class="empty compact-empty">No versions uploaded yet.</div>`
         }
         <button class="primary-button" id="approveVersion" ${version ? "" : "disabled"}>${version?.approved ? "Approved" : "Mark approved"}</button>
-        ${isAdmin ? `<button class="ghost-button" id="backProject">Back to project</button>` : `<button class="ghost-button" id="backClientDashboard">Back to dashboard</button>`}
+        ${isAdmin ? `<button class="ghost-button" id="backProject">Back to project</button>` : `<button class="ghost-button" id="backClientProject">Back to project</button>`}
       </aside>
     </div>
   `;
+
+  root.querySelectorAll("[data-review-version]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.selectedVersionId = button.dataset.reviewVersion;
+      saveState();
+      renderReviewShell(isAdmin);
+    });
+  });
 
   root.querySelector("#commentForm").addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -1927,8 +2023,8 @@ function renderReviewShell(isAdmin) {
 
   const back = root.querySelector("#backProject");
   if (back) back.addEventListener("click", renderProjectDetail);
-  const backClientDashboard = root.querySelector("#backClientDashboard");
-  if (backClientDashboard) backClientDashboard.addEventListener("click", renderClientDashboard);
+  const backClientProject = root.querySelector("#backClientProject");
+  if (backClientProject) backClientProject.addEventListener("click", renderClientProject);
 }
 
 function renderActivity() {
