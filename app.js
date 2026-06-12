@@ -663,19 +663,19 @@ async function persistPortalDataToSupabase() {
 }
 
 async function insertCommentInSupabase(comment) {
-  const client = getSupabase();
-  if (!client) throw new Error("Supabase is not available yet.");
-  const { data: userData } = await client.auth.getUser();
-  if (!userData?.user) throw new Error("Sign in again before saving.");
-  const { error } = await client.from("comments").insert({
-    id: comment.id,
-    version_id: comment.versionId,
-    author: comment.author,
-    role: comment.role,
-    body: comment.body,
-    created_at_label: comment.createdAt || "Just now",
+  const token = await supabaseAccessToken();
+  if (!token) throw new Error("Sign in again before saving.");
+  const response = await fetch(apiUrl("/api/save-comment"), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(comment),
   });
-  if (error) throw new Error(`Comment did not save: ${error.message}`);
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || "Comment did not save.");
+  return result.comment;
 }
 
 async function saveApprovalInSupabase(version) {

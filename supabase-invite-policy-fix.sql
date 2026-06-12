@@ -7,7 +7,7 @@ returns text
 language sql
 stable
 as $$
-  select lower(coalesce(auth.jwt() ->> 'email', (select email from profiles where id = auth.uid())));
+  select lower(auth.jwt() ->> 'email');
 $$;
 
 drop policy if exists "clients_read_own_client" on clients;

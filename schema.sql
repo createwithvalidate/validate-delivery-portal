@@ -196,7 +196,7 @@ returns text
 language sql
 stable
 as $$
-  select lower(coalesce(auth.jwt() ->> 'email', (select email from profiles where id = auth.uid())));
+  select lower(auth.jwt() ->> 'email');
 $$;
 
 create policy "profiles_select_own_or_admin" on profiles
