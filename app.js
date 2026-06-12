@@ -15,6 +15,7 @@ const seedData = {
   comments: [],
   activity: [],
   deliveredProjectIds: [],
+  accountDirectory: [],
   portalMeta: null,
 };
 
@@ -27,6 +28,7 @@ const state = loadState();
 state.session ??= null;
 state.clientAccount ??= null;
 state.deliveredProjectIds ??= [];
+state.accountDirectory ??= [];
 state.portalMeta ??= null;
 state.selectedVersionId ??= "";
 state.currentView ??= "clients";
@@ -98,6 +100,44 @@ function withTimeout(promise, message = "Request took too long", timeoutMs = 900
 
 function normalizeEmail(value = "") {
   return String(value).trim().toLowerCase();
+}
+
+function clientEmails(clientOrValue = "") {
+  const value = typeof clientOrValue === "string" ? clientOrValue : clientOrValue?.email;
+  return [
+    ...new Set(
+      String(value || "")
+        .split(/[,;\n]+/)
+        .map(normalizeEmail)
+        .filter(Boolean),
+    ),
+  ];
+}
+
+function clientEmailLabel(client) {
+  const emails = clientEmails(client);
+  if (!emails.length) return "No accounts";
+  if (emails.length === 1) return emails[0];
+  return `${emails[0]} + ${emails.length - 1} more`;
+}
+
+function clientAccountCountLabel(client) {
+  const count = clientEmails(client).length;
+  return `${count} client account${count === 1 ? "" : "s"}`;
+}
+
+function clientMatchesSession(client) {
+  const sessionEmail = normalizeEmail(state.session?.email);
+  return Boolean(sessionEmail && clientEmails(client).includes(sessionEmail));
+}
+
+function escapeHtml(value = "") {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
 function loadState() {
@@ -346,6 +386,38 @@ async function supabaseAccessToken() {
   if (!client) return "";
   const { data } = await client.auth.getSession();
   return data?.session?.access_token || "";
+}
+
+async function loadAccountDirectory({ force = false } = {}) {
+  if (state.session?.role !== "admin") return [];
+  if (!force && state.accountDirectory?.length) return state.accountDirectory;
+
+  const token = await supabaseAccessToken();
+  if (!token) throw new Error("Sign in again before loading client accounts.");
+
+  const response = await withTimeout(
+    fetch(apiUrl("/api/account-directory"), {
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    }),
+    "Client account list took too long.",
+    7500,
+  );
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || "Could not load client accounts.");
+
+  state.accountDirectory = (result.accounts || [])
+    .map((account) => ({
+      id: account.id || account.email,
+      email: normalizeEmail(account.email),
+      fullName: account.fullName || account.full_name || account.email,
+      role: account.role || "client",
+    }))
+    .filter((account) => account.email);
+  saveState();
+  return state.accountDirectory;
 }
 
 async function loadPortalDataFromSupabase() {
@@ -669,11 +741,10 @@ async function persistPortalDataToSupabase() {
   }
   if (state.deliveredProjectIds.length) {
     const accessRows = state.deliveredProjectIds
-      .map((projectId) => {
+      .flatMap((projectId) => {
         const project = state.projects.find((item) => item.id === projectId);
         const clientRecord = state.clients.find((item) => item.id === project?.clientId);
-        if (!clientRecord?.email) return null;
-        return { project_id: projectId, email: normalizeEmail(clientRecord.email) };
+        return clientEmails(clientRecord).map((email) => ({ project_id: projectId, email }));
       })
       .filter(Boolean);
     if (accessRows.length) {
@@ -959,10 +1030,7 @@ function portalFingerprint() {
 
 function activeClientAccount() {
   if (state.mode !== "client") return activeClient();
-  return (
-    state.clients.find((client) => client.email?.toLowerCase() === state.session?.email?.toLowerCase()) ||
-    state.clientAccount
-  );
+  return state.clients.find((client) => clientMatchesSession(client)) || state.clientAccount;
 }
 
 function currentCommentAuthor(isAdmin) {
@@ -1242,8 +1310,9 @@ function updateStats() {
 }
 
 async function emailProjectClient({ client, project, video, version, emailType = "version" }) {
-  if (!client?.email) {
-    throw new Error("Add a client email before sending");
+  const emails = clientEmails(client);
+  if (!emails.length) {
+    throw new Error("Choose at least one client account before sending");
   }
 
   if (!project) {
@@ -1251,36 +1320,40 @@ async function emailProjectClient({ client, project, video, version, emailType =
   }
 
   const reviewUrl = `${location.origin}${location.pathname}#review/${project.id}`;
-  const response = await fetch(apiUrl("/api/send-review-email"), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      emailType,
-      clientEmail: client.email,
-      clientName: client.contact || client.name,
-      projectName: project.name,
-      videoTitle: video?.title || project.name,
-      versionLabel: version?.label || "Project invite",
-      versionNote:
-        version?.note ||
-        (emailType === "invite"
-          ? "Sign in to your Validate review dashboard to see this project."
-          : "A new review version is ready."),
-      reviewUrl,
-      senderEmail: state.session?.email,
-      senderName: state.session?.email || "Validate",
-    }),
-  });
+  const results = [];
+  for (const email of emails) {
+    const response = await fetch(apiUrl("/api/send-review-email"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        emailType,
+        clientEmail: email,
+        clientName: client.contact || client.name,
+        projectName: project.name,
+        videoTitle: video?.title || project.name,
+        versionLabel: version?.label || "Project invite",
+        versionNote:
+          version?.note ||
+          (emailType === "invite"
+            ? "Sign in to your Validate review dashboard to see this project."
+            : "A new review version is ready."),
+        reviewUrl,
+        senderEmail: state.session?.email,
+        senderName: state.session?.email || "Validate",
+      }),
+    });
 
-  const result = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(result.error || "Email could not be sent");
-  return result;
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || `Email could not be sent to ${email}`);
+    results.push({ email, id: result.id });
+  }
+  return { ok: true, sent: results.length, results };
 }
 
 async function verifyProjectInviteAccess({ project, client }) {
   const supabase = getSupabase();
-  const email = normalizeEmail(client?.email);
-  if (!supabase || !project?.id || !email) {
+  const emails = clientEmails(client);
+  if (!supabase || !project?.id || !emails.length) {
     throw new Error("Could not verify the project invite.");
   }
 
@@ -1288,12 +1361,13 @@ async function verifyProjectInviteAccess({ project, client }) {
     .from("project_access")
     .select("project_id,email")
     .eq("project_id", project.id)
-    .ilike("email", email)
-    .maybeSingle();
+    .in("email", emails);
 
   if (error) throw new Error(`Invite access check failed: ${error.message}`);
-  if (!data) {
-    throw new Error(`Invite access did not save for ${email}. Try inviting again.`);
+  const savedEmails = new Set((data || []).map((row) => normalizeEmail(row.email)));
+  const missing = emails.filter((email) => !savedEmails.has(email));
+  if (missing.length) {
+    throw new Error(`Invite access did not save for ${missing[0]}. Try inviting again.`);
   }
   return data;
 }
@@ -1301,9 +1375,10 @@ async function verifyProjectInviteAccess({ project, client }) {
 async function inviteProjectClient(button) {
   const client = activeClient();
   const project = activeProject();
+  const emails = clientEmails(client);
 
-  if (!client?.email) {
-    showToast("Add a client email before inviting");
+  if (!emails.length) {
+    showToast("Choose at least one client account before inviting");
     return;
   }
 
@@ -1331,9 +1406,9 @@ async function inviteProjectClient(button) {
       emailType: "invite",
     });
 
-    state.activity.unshift(`Invited ${client.email} to ${project.name}`);
+    state.activity.unshift(`Invited ${emails.length} client account${emails.length === 1 ? "" : "s"} to ${project.name}`);
     await savePortalData();
-    showToast("Project invite sent");
+    showToast(`Project invite sent to ${emails.length} account${emails.length === 1 ? "" : "s"}`);
     renderProjectDetail();
   } catch (error) {
     showToast(error.message);
@@ -1345,11 +1420,12 @@ async function inviteProjectClient(button) {
 
 async function notifyClientOfNewVersion({ project, video, version }) {
   const client = state.clients.find((item) => item.id === project?.clientId);
-  if (!client?.email || !project || !video || !version) return false;
+  const emails = clientEmails(client);
+  if (!emails.length || !project || !video || !version) return false;
   if (!state.deliveredProjectIds.includes(project.id)) return false;
 
   await emailProjectClient({ client, project, video, version, emailType: "version" });
-  state.activity.unshift(`Notified ${client.email} about ${version.label} for ${video.title}`);
+  state.activity.unshift(`Notified ${emails.length} client account${emails.length === 1 ? "" : "s"} about ${version.label} for ${video.title}`);
   await savePortalData();
   return true;
 }
@@ -1502,7 +1578,7 @@ function renderClients() {
               <h3>${client.name}</h3>
               <p>${client.summary}</p>
               <div class="meta-strip">
-                <span>${client.email || "No email"}</span>
+                <span>${clientEmailLabel(client)}</span>
                 <span>${versions} versions</span>
               </div>
               <div class="card-footer">
@@ -1634,12 +1710,12 @@ function renderProjectDetail() {
   const client = state.clients.find((item) => item.id === project.clientId);
   const videos = state.videos.filter((video) => video.projectId === project.id);
   const isInvited = state.deliveredProjectIds.includes(project.id);
-  const canInvite = Boolean(client?.email);
-  const sendStatus = !client?.email
-    ? "Add a client email before inviting."
+  const canInvite = Boolean(clientEmails(client).length);
+  const sendStatus = !canInvite
+    ? "Choose at least one client account before inviting."
     : isInvited
-      ? `${client.email} can see this project. New versions will email automatically.`
-      : `Invite ${client.email} to add this project to their dashboard.`;
+      ? `${clientAccountCountLabel(client)} can see this project. New versions will email automatically.`
+      : `Invite ${clientAccountCountLabel(client)} to add this project to their dashboard.`;
   setPageHeader(project.name);
   document.querySelector("#openCreate").textContent = "Add video";
   createIntent = "video";
@@ -2088,13 +2164,107 @@ function renderSettings() {
   `;
 }
 
+function renderClientAccountOptions({ accounts, selectedEmails, query = "" }) {
+  const options = dialogFields.querySelector("#accountOptions");
+  const hidden = dialogFields.querySelector("#clientAccountEmails");
+  const selectedCount = dialogFields.querySelector("#accountSelectedCount");
+  if (!options || !hidden || !selectedCount) return;
+
+  const selected = [...selectedEmails];
+  hidden.value = selected.join(",");
+  selectedCount.textContent = selected.length ? `${selected.length} selected` : "No accounts selected";
+
+  const searchTerm = query.trim().toLowerCase();
+  const filtered = accounts.filter((account) => {
+    const haystack = `${account.fullName || ""} ${account.email || ""}`.toLowerCase();
+    return !searchTerm || haystack.includes(searchTerm);
+  });
+
+  if (!accounts.length) {
+    options.innerHTML = `
+      <div class="account-empty">
+        No client accounts found yet. Create a client login first, then come back here.
+      </div>
+    `;
+    return;
+  }
+
+  if (!filtered.length) {
+    options.innerHTML = `
+      <div class="account-empty">
+        No accounts match that search.
+      </div>
+    `;
+    return;
+  }
+
+  options.innerHTML = filtered
+    .map((account) => {
+      const email = normalizeEmail(account.email);
+      const checked = selectedEmails.has(email);
+      return `
+        <label class="account-option ${checked ? "is-selected" : ""}">
+          <input
+            type="checkbox"
+            value="${escapeHtml(email)}"
+            data-account-email="${escapeHtml(email)}"
+            ${checked ? "checked" : ""}
+          />
+          <span class="account-option-main">
+            <strong>${escapeHtml(account.fullName || account.email)}</strong>
+            <span>${escapeHtml(email)}</span>
+          </span>
+        </label>
+      `;
+    })
+    .join("");
+}
+
+function setupClientAccountPicker() {
+  const selectedEmails = new Set();
+  const search = dialogFields.querySelector("#accountSearch");
+  const options = dialogFields.querySelector("#accountOptions");
+
+  const renderOptions = () => {
+    renderClientAccountOptions({
+      accounts: state.accountDirectory || [],
+      selectedEmails,
+      query: search?.value || "",
+    });
+  };
+
+  search?.addEventListener("input", renderOptions);
+  options?.addEventListener("change", (event) => {
+    const checkbox = event.target.closest("[data-account-email]");
+    if (!checkbox) return;
+    const email = normalizeEmail(checkbox.dataset.accountEmail || checkbox.value);
+    if (checkbox.checked) selectedEmails.add(email);
+    else selectedEmails.delete(email);
+    renderOptions();
+  });
+
+  if (state.accountDirectory?.length) renderOptions();
+
+  loadAccountDirectory({ force: true })
+    .then(renderOptions)
+    .catch((error) => {
+      if (options) {
+        options.innerHTML = `
+          <div class="account-empty">
+            ${escapeHtml(error.message || "Client accounts could not load.")}
+          </div>
+        `;
+      }
+      showToast(error.message || "Client accounts could not load");
+    });
+}
+
 function openDialog(intent = createIntent) {
   createIntent = intent;
   const fields = {
     client: [
       ["name", "Client name", "Silver Dollar City"],
       ["contact", "Contact", "Megan Carter"],
-      ["email", "Email", "client@example.com"],
       ["summary", "Summary", "Commercial campaign and brand films."],
     ],
     project: [
@@ -2126,6 +2296,11 @@ function openDialog(intent = createIntent) {
     saveState();
     showToast("Version marked approved");
     render();
+    return;
+  }
+
+  if (intent === "client" && state.session?.role !== "admin") {
+    showToast("Only admins can create client workspaces");
     return;
   }
 
@@ -2169,6 +2344,28 @@ function openDialog(intent = createIntent) {
     )
     .join("");
 
+  if (intent === "client") {
+    dialogFields.insertAdjacentHTML(
+      "beforeend",
+      `
+        <div class="account-picker">
+          <div class="account-picker-head">
+            <label>
+              Client accounts
+              <input id="accountSearch" type="search" placeholder="Search by name or email" autocomplete="off" />
+            </label>
+            <span id="accountSelectedCount">No accounts selected</span>
+          </div>
+          <input id="clientAccountEmails" name="clientAccountEmails" type="hidden" />
+          <div class="account-options" id="accountOptions">
+            <div class="account-empty">Loading client accounts...</div>
+          </div>
+        </div>
+      `,
+    );
+    setupClientAccountPicker();
+  }
+
   dialog.showModal();
 }
 
@@ -2202,11 +2399,15 @@ async function handleCreateFormSubmit(event) {
   try {
     if (createIntent === "client") {
       const name = form.get("name") || "New Client";
+      const selectedEmails = clientEmails(form.get("clientAccountEmails"));
+      if (!selectedEmails.length) {
+        throw new Error("Choose at least one client account for this workspace.");
+      }
       state.clients.push({
         id: `${slug(name) || "client"}-${nowId}`,
         name,
         contact: form.get("contact") || "Primary contact",
-        email: normalizeEmail(form.get("email")),
+        email: selectedEmails.join(","),
         summary: form.get("summary") || "New client workspace.",
         archived: false,
       });

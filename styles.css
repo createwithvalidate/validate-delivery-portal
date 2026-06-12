@@ -1277,6 +1277,91 @@ textarea {
   margin: 18px 0;
 }
 
+.account-picker {
+  display: grid;
+  gap: 10px;
+}
+
+.account-picker-head {
+  display: grid;
+  gap: 8px;
+}
+
+.account-picker-head > span {
+  color: var(--dim);
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.account-options {
+  display: grid;
+  gap: 8px;
+  max-height: 230px;
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.account-option {
+  display: flex;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 11px;
+  min-height: 58px;
+  padding: 10px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--text);
+}
+
+.account-option:hover,
+.account-option.is-selected {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.account-option input {
+  width: 18px;
+  min-height: 18px;
+  accent-color: var(--text);
+}
+
+.account-option-main {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.account-option-main strong,
+.account-option-main span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-option-main strong {
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+.account-option-main span {
+  color: var(--dim);
+  font-size: 0.78rem;
+}
+
+.account-empty {
+  padding: 16px;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.45;
+  text-align: center;
+}
+
 label {
   display: grid;
   gap: 7px;
