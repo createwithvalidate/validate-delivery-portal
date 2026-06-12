@@ -1515,6 +1515,108 @@ button:disabled {
   flex: 0 0 auto;
 }
 
+.version-dropdown {
+  position: relative;
+  display: grid;
+  gap: 8px;
+}
+
+.current-version-row {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.version-menu-toggle {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--text);
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    transform 160ms ease;
+}
+
+.version-menu-toggle:hover,
+.version-menu-toggle[aria-expanded="true"] {
+  border-color: rgba(255, 255, 255, 0.24);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.version-menu-toggle[aria-expanded="true"] {
+  transform: rotate(180deg);
+}
+
+.chevron-down {
+  width: 10px;
+  height: 10px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateY(-2px) rotate(45deg);
+}
+
+.version-menu {
+  display: grid;
+  gap: 7px;
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: var(--radius);
+  background: rgba(10, 10, 11, 0.96);
+}
+
+.version-menu[hidden] {
+  display: none;
+}
+
+.version-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 50px;
+  padding: 9px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.025);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.version-menu-item:hover,
+.version-menu-item.active {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.065);
+}
+
+.version-menu-item > span:first-child {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.version-menu-item strong,
+.version-menu-item small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.version-menu-item strong {
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.version-menu-item small {
+  color: var(--dim);
+  font-size: 0.74rem;
+}
+
 .version-select.active {
   border-color: rgba(251, 251, 251, 0.32);
   background: rgba(255, 255, 255, 0.065);

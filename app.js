@@ -18,6 +18,7 @@ const seedData = {
   projectRecipients: {},
   projectCollaborators: {},
   projectAccessRows: [],
+  latestVersionByVideo: {},
   accountDirectory: [],
   portalMeta: null,
 };
@@ -35,6 +36,7 @@ state.deliveredProjectIds ??= [];
 state.projectRecipients ??= {};
 state.projectCollaborators ??= {};
 state.projectAccessRows ??= [];
+state.latestVersionByVideo ??= {};
 state.accountDirectory ??= [];
 state.portalMeta ??= null;
 state.selectedVersionId ??= "";
@@ -2363,7 +2365,15 @@ function renderReviewShell(isAdmin) {
 
   const project = state.projects.find((item) => item.id === video.projectId);
   const versions = state.versions.filter((version) => version.videoId === video.id);
-  const version = versions.find((item) => item.id === state.selectedVersionId) || versions[0];
+  const newestVersion = versions[0];
+  const knownLatestVersionId = state.latestVersionByVideo?.[video.id] || "";
+  const selectedVersionStillExists = versions.some((item) => item.id === state.selectedVersionId);
+  if (newestVersion && (!selectedVersionStillExists || knownLatestVersionId !== newestVersion.id)) {
+    state.selectedVersionId = newestVersion.id;
+    state.latestVersionByVideo[video.id] = newestVersion.id;
+    saveState();
+  }
+  const version = versions.find((item) => item.id === state.selectedVersionId) || newestVersion;
   const comments = state.comments.filter((comment) => comment.versionId === version?.id);
   setPageHeader(isAdmin ? video.title : project.name, isAdmin ? project?.name || "Video review" : "Project review");
   document.querySelector("#openCreate").hidden = true;
@@ -2400,19 +2410,42 @@ function renderReviewShell(isAdmin) {
         ${isAdmin ? `<button class="primary-button" id="addReviewVersion">${versions.length ? "Upload new version" : "Add first version"}</button>` : ""}
         ${
           versions.length
-            ? versions
-                .map(
-                  (item) => `
-                    <button class="version-row version-select ${item.id === version?.id ? "active" : ""}" type="button" data-review-version="${item.id}">
-                      <div>
-                        <h3>${item.label}</h3>
-                        <p class="muted">${item.createdAt}</p>
-                      </div>
-                      <span class="status-pill ${item.approved ? "approved" : ""}">${item.approved ? "approved" : item.provider}</span>
-                    </button>
-                  `,
-                )
-                .join("")
+            ? `
+              <div class="version-dropdown">
+                <div class="version-row current-version-row">
+                  <div>
+                    <h3>${version?.label || "Current version"}</h3>
+                    <p class="muted">${version?.createdAt || ""}</p>
+                  </div>
+                  ${
+                    versions.length > 1
+                      ? `<button class="version-menu-toggle" type="button" id="versionMenuToggle" aria-label="Choose version" aria-expanded="false">
+                          <span class="chevron-down" aria-hidden="true"></span>
+                        </button>`
+                      : ""
+                  }
+                </div>
+                ${
+                  versions.length > 1
+                    ? `<div class="version-menu" id="versionMenu" hidden>
+                        ${versions
+                          .map(
+                            (item) => `
+                              <button class="version-menu-item ${item.id === version?.id ? "active" : ""}" type="button" data-review-version="${item.id}">
+                                <span>
+                                  <strong>${item.label}</strong>
+                                  <small>${item.createdAt}</small>
+                                </span>
+                                <span class="status-pill ${item.approved ? "approved" : ""}">${item.approved ? "approved" : "review"}</span>
+                              </button>
+                            `,
+                          )
+                          .join("")}
+                      </div>`
+                    : ""
+                }
+              </div>
+            `
             : `<div class="empty compact-empty">No versions yet.</div>`
         }
         ${version ? `<button class="${isAdmin ? "ghost-button" : "primary-button"}" id="approveVersion">${version.approved ? "Approved" : "Mark approved"}</button>` : ""}
@@ -2456,6 +2489,15 @@ function renderReviewShell(isAdmin) {
       saveState();
       renderReviewShell(isAdmin);
     });
+  });
+
+  root.querySelector("#versionMenuToggle")?.addEventListener("click", () => {
+    const menu = root.querySelector("#versionMenu");
+    const toggle = root.querySelector("#versionMenuToggle");
+    if (!menu || !toggle) return;
+    const shouldOpen = menu.hidden;
+    menu.hidden = !shouldOpen;
+    toggle.setAttribute("aria-expanded", String(shouldOpen));
   });
 
   root.querySelector("#addReviewVersion")?.addEventListener("click", () => openDialog("version"));
