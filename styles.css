@@ -991,6 +991,10 @@ button:disabled {
   margin: 0;
 }
 
+.media-clean-head {
+  align-items: center;
+}
+
 .workspace-stats {
   display: flex;
   flex-wrap: wrap;
@@ -1021,25 +1025,29 @@ button:disabled {
   margin-top: 18px;
 }
 
+.workspace-panel > .media-section:first-of-type {
+  margin-top: 0;
+}
+
 .project-media-panel {
   display: grid;
-  gap: 18px;
+  gap: 14px;
 }
 
 .media-library-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.08fr) minmax(300px, 0.72fr);
+  grid-template-columns: minmax(0, 1.08fr) minmax(280px, 0.72fr);
   gap: 14px;
   align-items: start;
 }
 
 .media-section-box {
-  min-height: 330px;
+  min-height: 0;
   margin-top: 0;
   padding: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.075);
+  border: 1px solid rgba(255, 255, 255, 0.065);
   border-radius: var(--radius);
-  background: rgba(255, 255, 255, 0.018);
+  background: rgba(255, 255, 255, 0.012);
 }
 
 .media-section-head {
@@ -1047,13 +1055,13 @@ button:disabled {
   align-items: flex-end;
   justify-content: space-between;
   gap: 14px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.075);
+  padding-bottom: 9px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .media-section-head h3 {
   margin: 0;
-  font-size: 1.14rem;
+  font-size: 1rem;
   letter-spacing: 0;
 }
 
@@ -1096,16 +1104,27 @@ button:disabled {
 .media-row {
   cursor: pointer;
   font: inherit;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.016);
 }
 
 .media-row .inline-actions {
   flex: 0 0 auto;
 }
 
+.media-row .meta-strip {
+  margin-top: 9px;
+}
+
 .open-arrow {
   color: var(--muted);
   font-size: 0.82rem;
   font-weight: 800;
+}
+
+.action-panel {
+  align-self: start;
+  gap: 12px;
 }
 
 .media-summary {
@@ -1131,10 +1150,10 @@ button:disabled {
 }
 
 .media-card {
-  padding: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.075);
+  padding: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.065);
   border-radius: var(--radius);
-  background: rgba(255, 255, 255, 0.018);
+  background: rgba(255, 255, 255, 0.012);
 }
 
 .media-card-head {
@@ -1142,13 +1161,13 @@ button:disabled {
   align-items: flex-start;
   justify-content: space-between;
   gap: 14px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.065);
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.055);
 }
 
 .media-card-head h3 {
   margin: 0 0 5px;
-  font-size: 1.1rem;
+  font-size: 1rem;
   letter-spacing: 0;
 }
 
@@ -1267,8 +1286,8 @@ button:disabled {
 }
 
 .review-side-panel .version-row {
-  padding: 12px;
-  background: rgba(255, 255, 255, 0.018);
+  padding: 11px;
+  background: rgba(255, 255, 255, 0.014);
 }
 
 .review-side-panel .version-row h3 {
@@ -1297,13 +1316,13 @@ button:disabled {
 
 .project-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.45fr) minmax(340px, 0.72fr);
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
   gap: 16px;
 }
 
 .review-layout {
-  grid-template-columns: minmax(0, 1.58fr) minmax(320px, 0.62fr);
-  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
+  gap: 16px;
   align-items: start;
 }
 
@@ -1314,13 +1333,16 @@ button:disabled {
 }
 
 .review-main-panel {
-  padding: 14px;
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 
 .review-side-panel {
   position: sticky;
   top: 24px;
-  padding: 16px;
+  gap: 12px;
+  padding: 14px;
 }
 
 .video-frame {
@@ -1328,7 +1350,7 @@ button:disabled {
   display: grid;
   place-items: center;
   aspect-ratio: 16 / 9;
-  border: 1px solid rgba(255, 255, 255, 0.13);
+  border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 6px;
   overflow: hidden;
   background: #141416;
@@ -1348,7 +1370,7 @@ button:disabled {
   width: 100%;
   height: 100%;
   background:
-    radial-gradient(circle at center, rgba(255, 255, 255, 0.055), transparent 38%),
+    radial-gradient(circle at center, rgba(255, 255, 255, 0.035), transparent 38%),
     #161618;
 }
 
@@ -1373,9 +1395,9 @@ button:disabled {
 
 .review-head {
   justify-content: space-between;
-  gap: 18px;
-  margin: 16px 0;
-  padding: 0 2px;
+  gap: 14px;
+  margin: 12px 0 0;
+  padding: 0 1px;
 }
 
 .review-head h2 {
@@ -1385,15 +1407,15 @@ button:disabled {
 
 .comments-panel {
   display: grid;
-  gap: 10px;
-  padding-top: 16px;
-  border-top: 1px solid rgba(255, 255, 255, 0.075);
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
   background: transparent;
 }
 
 .review-side-panel > .eyebrow {
-  padding-bottom: 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.075);
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .action-status {
@@ -1668,7 +1690,8 @@ label {
 
 .compact-empty {
   padding: 18px;
-  background: rgba(255, 255, 255, 0.018);
+  border-style: solid;
+  background: rgba(255, 255, 255, 0.012);
   font-size: 0.92rem;
 }
 

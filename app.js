@@ -1758,11 +1758,10 @@ function renderProjectDetail() {
   const isInvited = state.deliveredProjectIds.includes(project.id);
   const canInvite = Boolean(clientEmails(client).length);
   const sendStatus = !canInvite
-    ? "Choose at least one client account before inviting."
+    ? "Choose client accounts first."
     : isInvited
-      ? `${clientAccountCountLabel(client)} can see this project. New versions will email automatically.`
-      : `Invite ${clientAccountCountLabel(client)} to add this project to their dashboard.`;
-  const totalVersions = videos.reduce((total, video) => total + videoVersions(video.id).length, 0);
+      ? "Project is on the client dashboard."
+      : `Send to ${clientAccountCountLabel(client)}.`;
   setPageHeader(project.name);
   document.querySelector("#openCreate").textContent = "Add video";
   document.querySelector("#openCreate").hidden = state.session?.role !== "admin";
@@ -1770,21 +1769,15 @@ function renderProjectDetail() {
 
   root.innerHTML = `
     <div class="project-layout">
-      <section class="panel project-media-panel">
-        <p class="eyebrow">${client.name}</p>
-        <div class="project-title">
-          <h2>${project.name}</h2>
-          <p class="muted">${project.description}</p>
-        </div>
+      <section class="project-media-panel">
         <div class="media-library-grid">
           <div class="media-section media-section-box">
             <div class="media-section-head">
               <div>
                 <p class="eyebrow">Videos</p>
-                <h3>Cuts in this project</h3>
+                <h3>Videos</h3>
               </div>
               <div class="media-head-actions">
-                <span>${videos.length} video${videos.length === 1 ? "" : "s"}</span>
                 <button class="ghost-button small-action" id="addVideo">Add video</button>
               </div>
             </div>
@@ -1801,52 +1794,40 @@ function renderProjectDetail() {
                     <button class="list-row media-row" type="button" data-video="${video.id}">
                       <div>
                         <h3>${video.title}</h3>
-                        <p class="muted">${version ? `Latest: ${version.label}` : "Open this video to upload the first version."}</p>
+                        <p class="muted">${version ? `Latest: ${version.label}` : "No versions yet."}</p>
                         <div class="meta-strip">
                           <span>${versionCountLabel(versions.length)}</span>
-                          <span>${noteCount} comments</span>
-                          <span>${video.due || "No details"}</span>
+                          ${noteCount ? `<span>${noteCount} comments</span>` : ""}
                         </div>
                       </div>
                       <div class="inline-actions">
-                        <span class="status-pill ${video.status === "approved" ? "approved" : ""}">${video.status}</span>
                         <span class="open-arrow">Open</span>
                       </div>
                     </button>
                   `;
                 })
-                .join("") || `<div class="empty compact-empty">No videos yet. Add a video, then open it to upload versions.</div>`}
+                .join("") || `<div class="empty compact-empty">No videos yet.</div>`}
             </div>
           </div>
           <div class="media-section media-section-box">
             <div class="media-section-head">
               <div>
                 <p class="eyebrow">Images</p>
-                <h3>Reference images</h3>
+                <h3>Images</h3>
               </div>
               <div class="media-head-actions">
-                <span>${images.length} image${images.length === 1 ? "" : "s"}</span>
                 <button class="ghost-button small-action" id="addImage">Add image</button>
               </div>
             </div>
-            ${renderProjectImageGrid(images, { emptyText: "No images yet. Add frames, boards, or reference stills for this project." })}
+            ${renderProjectImageGrid(images, { emptyText: "No images yet." })}
           </div>
         </div>
       </section>
-      <aside class="panel stack">
-        <p class="eyebrow">Delivery actions</p>
-        <div class="media-summary">
-          <span>${videos.length} videos</span>
-          <span>${totalVersions} versions</span>
-          <span>${images.length} images</span>
-        </div>
-        <div class="action-status ${canInvite ? "ready" : ""}">
-          <strong>${isInvited ? "Project invited" : canInvite ? "Ready to invite" : "Needs attention"}</strong>
-          <span>${sendStatus}</span>
-        </div>
+      <aside class="panel stack action-panel">
+        <p class="eyebrow">Delivery</p>
         <button class="primary-button" id="sendClient" ${canInvite ? "" : "disabled"}>${isInvited ? "Resend project invite" : "Invite client to project"}</button>
+        <p class="muted">${sendStatus}</p>
         <button class="ghost-button" id="backProjects">Back to client</button>
-        <p class="muted">Open a video to upload versions. After this project is invited, each new version automatically emails the client.</p>
       </aside>
     </div>
   `;
@@ -1987,32 +1968,21 @@ function renderClientProject() {
 
   const videos = projectVideos(project.id);
   const images = projectImages(project.id);
-  const versionItems = videos.flatMap((video) =>
-    videoVersions(video.id).map((version) => ({
-      video,
-      version,
-    })),
-  );
   setPageHeader(project.name, "Project review", "client");
   document.querySelector("#openCreate").hidden = true;
 
   root.innerHTML = `
     <section class="workspace-panel">
-      <div class="workspace-head">
-        <div>
-          <p class="eyebrow">Project media</p>
-          <h2>Review videos and images.</h2>
-          <p class="muted">${project.description || "Open a video version to watch, comment, and approve. Images stay here for reference."}</p>
-        </div>
+      <div class="workspace-head media-clean-head">
+        <p class="muted">${project.description || "Review the latest project files."}</p>
         <button class="ghost-button" type="button" id="backClientDashboard">Back to projects</button>
       </div>
       <div class="media-section">
         <div class="media-section-head">
           <div>
             <p class="eyebrow">Videos</p>
-            <h3>Cuts and versions</h3>
+            <h3>Videos</h3>
           </div>
-          <span>${versionItems.length} version${versionItems.length === 1 ? "" : "s"}</span>
         </div>
         <div class="client-video-stack">
           ${
@@ -2025,9 +1995,8 @@ function renderClientProject() {
                         <div class="media-card-head">
                           <div>
                             <h3>${video.title}</h3>
-                            <p class="muted">${versions.length ? "Choose a version to review." : "No versions are ready yet."}</p>
+                            <p class="muted">${versions.length ? versionCountLabel(versions.length) : "No versions yet."}</p>
                           </div>
-                          <span>${versionCountLabel(versions.length)}</span>
                         </div>
                         <div class="project-list">
                           ${
@@ -2064,11 +2033,10 @@ function renderClientProject() {
         <div class="media-section-head">
           <div>
             <p class="eyebrow">Images</p>
-            <h3>Project references</h3>
+            <h3>Images</h3>
           </div>
-          <span>${images.length} image${images.length === 1 ? "" : "s"}</span>
         </div>
-        ${renderProjectImageGrid(images, { emptyText: "No project images are ready yet." })}
+        ${renderProjectImageGrid(images, { emptyText: "No images yet." })}
       </div>
     </section>
   `;
@@ -2115,8 +2083,7 @@ function renderReviewShell(isAdmin) {
   const version = versions.find((item) => item.id === state.selectedVersionId) || versions[0];
   const comments = state.comments.filter((comment) => comment.versionId === version?.id);
   setPageHeader(isAdmin ? video.title : project.name, isAdmin ? project?.name || "Video review" : "Project review");
-  document.querySelector("#openCreate").textContent = isAdmin ? "Add version" : "Approve";
-  document.querySelector("#openCreate").hidden = !isAdmin;
+  document.querySelector("#openCreate").hidden = true;
   createIntent = isAdmin ? "version" : "approve";
 
   root.innerHTML = `
@@ -2131,18 +2098,22 @@ function renderReviewShell(isAdmin) {
         </div>
         <div class="review-head">
           <div>
-            <p class="eyebrow">${version?.label || "No version"}</p>
+            <p class="eyebrow">${version?.label || project?.name || "Video"}</p>
             <h2>${video.title}</h2>
-            <p class="muted">${version?.note || "Upload the first version to begin review."}</p>
+            ${version?.note ? `<p class="muted">${version.note}</p>` : ""}
           </div>
-          <div class="inline-actions">
-            <span class="provider-pill">${version?.provider || "No provider"}</span>
-            <span class="status-pill ${version?.approved ? "approved" : ""}">${version?.approved ? "approved" : "in review"}</span>
-          </div>
+          ${
+            version
+              ? `<div class="inline-actions">
+                  <span class="provider-pill">${version.provider || "Video"}</span>
+                  <span class="status-pill ${version.approved ? "approved" : ""}">${version.approved ? "approved" : "in review"}</span>
+                </div>`
+              : ""
+          }
         </div>
       </section>
       <aside class="panel stack review-side-panel">
-        <p class="eyebrow">Version history</p>
+        <p class="eyebrow">Versions</p>
         ${isAdmin ? `<button class="primary-button" id="addReviewVersion">Upload new version</button>` : ""}
         ${
           versions.length
@@ -2159,35 +2130,39 @@ function renderReviewShell(isAdmin) {
                   `,
                 )
                 .join("")
-            : `<div class="empty compact-empty">No versions uploaded yet.</div>`
+            : `<div class="empty compact-empty">No versions yet.</div>`
         }
-        <button class="${isAdmin ? "ghost-button" : "primary-button"}" id="approveVersion" ${version ? "" : "disabled"}>${version?.approved ? "Approved" : "Mark approved"}</button>
+        ${version ? `<button class="${isAdmin ? "ghost-button" : "primary-button"}" id="approveVersion">${version.approved ? "Approved" : "Mark approved"}</button>` : ""}
         ${isAdmin ? `<button class="ghost-button" id="backProject">Back to project</button>` : `<button class="ghost-button" id="backClientProject">Back to project</button>`}
-        <div class="comments-panel">
-          <p class="eyebrow">Comments</p>
-          ${
-            comments.length
-              ? comments
-                  .map(
-                    (comment) => `
-                      <div class="comment-row">
-                        <div class="avatar">${comment.author.slice(0, 1)}</div>
-                        <div>
-                          <strong>${comment.author}</strong>
-                          <span class="muted"> ${comment.createdAt}</span>
-                          <p>${comment.body}</p>
-                        </div>
-                      </div>
-                    `,
-                  )
-                  .join("")
-              : `<div class="empty compact-empty">No comments yet. Add the first review comment below.</div>`
-          }
-          <form class="comment-form" id="commentForm">
-            <textarea name="body" placeholder="Add a comment for this version"></textarea>
-            <button class="primary-button" ${version ? "" : "disabled"}>Add comment</button>
-          </form>
-        </div>
+        ${
+          version
+            ? `<div class="comments-panel">
+                <p class="eyebrow">Comments</p>
+                ${
+                  comments.length
+                    ? comments
+                        .map(
+                          (comment) => `
+                            <div class="comment-row">
+                              <div class="avatar">${comment.author.slice(0, 1)}</div>
+                              <div>
+                                <strong>${comment.author}</strong>
+                                <span class="muted"> ${comment.createdAt}</span>
+                                <p>${comment.body}</p>
+                              </div>
+                            </div>
+                          `,
+                        )
+                        .join("")
+                    : `<div class="empty compact-empty">No comments yet.</div>`
+                }
+                <form class="comment-form" id="commentForm">
+                  <textarea name="body" placeholder="Add a comment"></textarea>
+                  <button class="primary-button">Add comment</button>
+                </form>
+              </div>`
+            : ""
+        }
       </aside>
     </div>
   `;
@@ -2202,7 +2177,7 @@ function renderReviewShell(isAdmin) {
 
   root.querySelector("#addReviewVersion")?.addEventListener("click", () => openDialog("version"));
 
-  root.querySelector("#commentForm").addEventListener("submit", async (event) => {
+  root.querySelector("#commentForm")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const body = new FormData(event.currentTarget).get("body").trim();
     if (!body || !version) return;
@@ -2230,7 +2205,7 @@ function renderReviewShell(isAdmin) {
     }
   });
 
-  root.querySelector("#approveVersion").addEventListener("click", async () => {
+  root.querySelector("#approveVersion")?.addEventListener("click", async () => {
     if (!version) return;
     const wasApproved = version.approved;
     const previousStatus = video.status;
