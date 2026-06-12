@@ -1021,6 +1021,27 @@ button:disabled {
   margin-top: 18px;
 }
 
+.project-media-panel {
+  display: grid;
+  gap: 18px;
+}
+
+.media-library-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.08fr) minmax(300px, 0.72fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.media-section-box {
+  min-height: 330px;
+  margin-top: 0;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.018);
+}
+
 .media-section-head {
   display: flex;
   align-items: flex-end;
@@ -1046,6 +1067,93 @@ button:disabled {
   font-weight: 800;
   letter-spacing: 0.12em;
   text-transform: uppercase;
+}
+
+.media-head-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.media-head-actions > span,
+.media-summary span,
+.media-card-head > span {
+  color: var(--dim);
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.small-action {
+  min-height: 32px;
+  padding: 0 12px;
+  font-size: 0.82rem;
+}
+
+.media-row {
+  cursor: pointer;
+  font: inherit;
+}
+
+.media-row .inline-actions {
+  flex: 0 0 auto;
+}
+
+.open-arrow {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.media-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.media-summary span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.client-video-stack,
+.media-card {
+  display: grid;
+  gap: 10px;
+}
+
+.media-card {
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.018);
+}
+
+.media-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.065);
+}
+
+.media-card-head h3 {
+  margin: 0 0 5px;
+  font-size: 1.1rem;
+  letter-spacing: 0;
+}
+
+.media-card-head .muted {
+  margin: 0;
 }
 
 .image-grid {
@@ -1574,6 +1682,7 @@ label {
   .login-screen,
   .shell,
   .project-layout,
+  .media-library-grid,
   .hero-band {
     grid-template-columns: 1fr;
   }
@@ -1617,15 +1726,21 @@ label {
   .topbar,
   .list-row,
   .version-row,
+  .media-card-head,
   .review-head {
     align-items: stretch;
     flex-direction: column;
   }
 
   .topbar-actions,
+  .media-head-actions,
   .inline-actions {
     display: grid;
     grid-template-columns: 1fr 1fr;
+  }
+
+  .media-section-box {
+    min-height: 0;
   }
 
   .grid {

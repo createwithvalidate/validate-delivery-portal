@@ -1242,6 +1242,10 @@ function renderProjectImageGrid(images, { emptyText = "No project images yet." }
   `;
 }
 
+function versionCountLabel(count) {
+  return `${count} version${count === 1 ? "" : "s"}`;
+}
+
 function reviewProjectIdFromHash() {
   const match = location.hash.match(/^#review\/(.+)$/);
   return match ? decodeURIComponent(match[1]) : "";
@@ -1653,6 +1657,7 @@ function renderProjects() {
 
   setPageHeader(client.name, client.contact || "Projects", "client");
   document.querySelector("#openCreate").textContent = "New project";
+  document.querySelector("#openCreate").hidden = state.session?.role !== "admin";
   if (deleteClientAction) {
     deleteClientAction.hidden = state.session?.role !== "admin";
     deleteClientAction.dataset.clientId = client.id;
@@ -1757,73 +1762,91 @@ function renderProjectDetail() {
     : isInvited
       ? `${clientAccountCountLabel(client)} can see this project. New versions will email automatically.`
       : `Invite ${clientAccountCountLabel(client)} to add this project to their dashboard.`;
+  const totalVersions = videos.reduce((total, video) => total + videoVersions(video.id).length, 0);
   setPageHeader(project.name);
   document.querySelector("#openCreate").textContent = "Add video";
+  document.querySelector("#openCreate").hidden = state.session?.role !== "admin";
   createIntent = "video";
 
   root.innerHTML = `
     <div class="project-layout">
-      <section class="panel">
+      <section class="panel project-media-panel">
         <p class="eyebrow">${client.name}</p>
         <div class="project-title">
           <h2>${project.name}</h2>
           <p class="muted">${project.description}</p>
         </div>
-        <div class="media-section">
-          <div class="media-section-head">
-            <div>
-              <p class="eyebrow">Videos</p>
-              <h3>Versioned cuts</h3>
+        <div class="media-library-grid">
+          <div class="media-section media-section-box">
+            <div class="media-section-head">
+              <div>
+                <p class="eyebrow">Videos</p>
+                <h3>Cuts in this project</h3>
+              </div>
+              <div class="media-head-actions">
+                <span>${videos.length} video${videos.length === 1 ? "" : "s"}</span>
+                <button class="ghost-button small-action" id="addVideo">Add video</button>
+              </div>
             </div>
-            <span>${videos.length} video${videos.length === 1 ? "" : "s"}</span>
-          </div>
-        <div class="stack">
-          ${videos
-            .map((video) => {
-              const version = latestVersion(video.id);
-              return `
-                <div class="list-row">
-                  <div>
-                    <h3>${video.title}</h3>
-                    <p class="muted">Due ${video.due}. Latest: ${version?.label || "No versions yet"}</p>
-                    <div class="meta-strip">
-                      <span>${videoVersions(video.id).length} versions</span>
-                      <span>${state.comments.filter((comment) => comment.versionId === version?.id).length} notes</span>
-                    </div>
-                  </div>
-                  <div class="inline-actions">
-                    <span class="status-pill ${video.status === "approved" ? "approved" : ""}">${video.status}</span>
-                    <button class="ghost-button" data-video="${video.id}">Review</button>
-                  </div>
-                </div>
-              `;
-            })
-            .join("") || `<div class="empty compact-empty">No videos yet. Upload a version or add a video to start review.</div>`}
-        </div>
-        </div>
-        <div class="media-section">
-          <div class="media-section-head">
-            <div>
-              <p class="eyebrow">Images</p>
-              <h3>Project references</h3>
+            <div class="project-list">
+              ${videos
+                .map((video) => {
+                  const versions = videoVersions(video.id);
+                  const version = versions[0];
+                  const noteCount = versions.reduce(
+                    (total, item) => total + state.comments.filter((comment) => comment.versionId === item.id).length,
+                    0,
+                  );
+                  return `
+                    <button class="list-row media-row" type="button" data-video="${video.id}">
+                      <div>
+                        <h3>${video.title}</h3>
+                        <p class="muted">${version ? `Latest: ${version.label}` : "Open this video to upload the first version."}</p>
+                        <div class="meta-strip">
+                          <span>${versionCountLabel(versions.length)}</span>
+                          <span>${noteCount} comments</span>
+                          <span>${video.due || "No details"}</span>
+                        </div>
+                      </div>
+                      <div class="inline-actions">
+                        <span class="status-pill ${video.status === "approved" ? "approved" : ""}">${video.status}</span>
+                        <span class="open-arrow">Open</span>
+                      </div>
+                    </button>
+                  `;
+                })
+                .join("") || `<div class="empty compact-empty">No videos yet. Add a video, then open it to upload versions.</div>`}
             </div>
-            <span>${images.length} image${images.length === 1 ? "" : "s"}</span>
           </div>
-          ${renderProjectImageGrid(images)}
+          <div class="media-section media-section-box">
+            <div class="media-section-head">
+              <div>
+                <p class="eyebrow">Images</p>
+                <h3>Reference images</h3>
+              </div>
+              <div class="media-head-actions">
+                <span>${images.length} image${images.length === 1 ? "" : "s"}</span>
+                <button class="ghost-button small-action" id="addImage">Add image</button>
+              </div>
+            </div>
+            ${renderProjectImageGrid(images, { emptyText: "No images yet. Add frames, boards, or reference stills for this project." })}
+          </div>
         </div>
       </section>
       <aside class="panel stack">
         <p class="eyebrow">Delivery actions</p>
+        <div class="media-summary">
+          <span>${videos.length} videos</span>
+          <span>${totalVersions} versions</span>
+          <span>${images.length} images</span>
+        </div>
         <div class="action-status ${canInvite ? "ready" : ""}">
           <strong>${isInvited ? "Project invited" : canInvite ? "Ready to invite" : "Needs attention"}</strong>
           <span>${sendStatus}</span>
         </div>
         <button class="primary-button" id="sendClient" ${canInvite ? "" : "disabled"}>${isInvited ? "Resend project invite" : "Invite client to project"}</button>
-        <button class="ghost-button" id="addVideo">Add video</button>
-        <button class="ghost-button" id="addVersion">Upload new version</button>
-        <button class="ghost-button" id="addImage">Add image</button>
         <button class="ghost-button" id="backProjects">Back to client</button>
-        <p class="muted">After a project is invited, new uploaded versions automatically email the client.</p>
+        <p class="muted">Open a video to upload versions. After this project is invited, each new version automatically emails the client.</p>
       </aside>
     </div>
   `;
@@ -1831,6 +1854,7 @@ function renderProjectDetail() {
   root.querySelectorAll("[data-video]").forEach((button) => {
     button.addEventListener("click", () => {
       state.selectedVideoId = button.dataset.video;
+      state.selectedVersionId = "";
       saveState();
       renderAdminReview();
     });
@@ -1838,7 +1862,6 @@ function renderProjectDetail() {
   root.querySelector("#sendClient").addEventListener("click", (event) => {
     inviteProjectClient(event.currentTarget);
   });
-  root.querySelector("#addVersion").addEventListener("click", () => openDialog("version"));
   root.querySelector("#addVideo").addEventListener("click", () => openDialog("video"));
   root.querySelector("#addImage").addEventListener("click", () => openDialog("image"));
   root.querySelector("#backProjects").addEventListener("click", renderProjects);
@@ -1987,33 +2010,55 @@ function renderClientProject() {
         <div class="media-section-head">
           <div>
             <p class="eyebrow">Videos</p>
-            <h3>Versions</h3>
+            <h3>Cuts and versions</h3>
           </div>
           <span>${versionItems.length} version${versionItems.length === 1 ? "" : "s"}</span>
         </div>
-      <div class="project-list">
-        ${
-          versionItems.length
-            ? versionItems
-                .map(
-                  ({ video, version }) => `
-                    <button class="version-row version-select" type="button" data-client-version="${version.id}" data-client-video="${video.id}">
-                      <div>
-                        <h3>${version.label}</h3>
-                        <p class="muted">${version.note || "Open this version to review."}</p>
-                        <div class="meta-strip">
-                          <span>${version.createdAt}</span>
-                          <span>${state.comments.filter((comment) => comment.versionId === version.id).length} comments</span>
+        <div class="client-video-stack">
+          ${
+            videos.length
+              ? videos
+                  .map((video) => {
+                    const versions = videoVersions(video.id);
+                    return `
+                      <div class="media-card">
+                        <div class="media-card-head">
+                          <div>
+                            <h3>${video.title}</h3>
+                            <p class="muted">${versions.length ? "Choose a version to review." : "No versions are ready yet."}</p>
+                          </div>
+                          <span>${versionCountLabel(versions.length)}</span>
+                        </div>
+                        <div class="project-list">
+                          ${
+                            versions.length
+                              ? versions
+                                  .map(
+                                    (version) => `
+                                      <button class="version-row version-select" type="button" data-client-version="${version.id}" data-client-video="${video.id}">
+                                        <div>
+                                          <h3>${version.label}</h3>
+                                          <p class="muted">${version.note || "Open this version to review."}</p>
+                                          <div class="meta-strip">
+                                            <span>${version.createdAt}</span>
+                                            <span>${state.comments.filter((comment) => comment.versionId === version.id).length} comments</span>
+                                          </div>
+                                        </div>
+                                        <span class="status-pill ${version.approved ? "approved" : ""}">${version.approved ? "approved" : "open review"}</span>
+                                      </button>
+                                    `,
+                                  )
+                                  .join("")
+                              : `<div class="empty compact-empty">Waiting on the first upload for this video.</div>`
+                          }
                         </div>
                       </div>
-                      <span class="status-pill ${version.approved ? "approved" : ""}">${version.approved ? "approved" : "open review"}</span>
-                    </button>
-                  `,
-                )
-                .join("")
-            : `<div class="empty compact-empty">No versions are ready for this project yet.</div>`
-        }
-      </div>
+                    `;
+                  })
+                  .join("")
+              : `<div class="empty compact-empty">No videos are ready for this project yet.</div>`
+          }
+        </div>
       </div>
       <div class="media-section">
         <div class="media-section-head">
@@ -2060,12 +2105,16 @@ function renderReviewShell(isAdmin) {
     `;
     return;
   }
+  if (state.selectedVideoId !== video.id) {
+    state.selectedVideoId = video.id;
+    saveState();
+  }
 
   const project = state.projects.find((item) => item.id === video.projectId);
   const versions = state.versions.filter((version) => version.videoId === video.id);
   const version = versions.find((item) => item.id === state.selectedVersionId) || versions[0];
   const comments = state.comments.filter((comment) => comment.versionId === version?.id);
-  setPageHeader(isAdmin ? video.title : project.name);
+  setPageHeader(isAdmin ? video.title : project.name, isAdmin ? project?.name || "Video review" : "Project review");
   document.querySelector("#openCreate").textContent = isAdmin ? "Add version" : "Approve";
   document.querySelector("#openCreate").hidden = !isAdmin;
   createIntent = isAdmin ? "version" : "approve";
@@ -2094,6 +2143,7 @@ function renderReviewShell(isAdmin) {
       </section>
       <aside class="panel stack review-side-panel">
         <p class="eyebrow">Version history</p>
+        ${isAdmin ? `<button class="primary-button" id="addReviewVersion">Upload new version</button>` : ""}
         ${
           versions.length
             ? versions
@@ -2111,7 +2161,7 @@ function renderReviewShell(isAdmin) {
                 .join("")
             : `<div class="empty compact-empty">No versions uploaded yet.</div>`
         }
-        <button class="primary-button" id="approveVersion" ${version ? "" : "disabled"}>${version?.approved ? "Approved" : "Mark approved"}</button>
+        <button class="${isAdmin ? "ghost-button" : "primary-button"}" id="approveVersion" ${version ? "" : "disabled"}>${version?.approved ? "Approved" : "Mark approved"}</button>
         ${isAdmin ? `<button class="ghost-button" id="backProject">Back to project</button>` : `<button class="ghost-button" id="backClientProject">Back to project</button>`}
         <div class="comments-panel">
           <p class="eyebrow">Comments</p>
@@ -2149,6 +2199,8 @@ function renderReviewShell(isAdmin) {
       renderReviewShell(isAdmin);
     });
   });
+
+  root.querySelector("#addReviewVersion")?.addEventListener("click", () => openDialog("version"));
 
   root.querySelector("#commentForm").addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -2408,12 +2460,7 @@ function openDialog(intent = createIntent) {
     ],
     video: [
       ["title", "Video title", "Launch Film"],
-      ["due", "Due", "June 21"],
-      ["label", "Version label", "Version 1"],
-      ["provider", "Provider", "Bunny Stream"],
-      ["file", "Video file", ""],
-      ["embedUrl", "Embed URL", ""],
-      ["note", "Version note", "First cut for review."],
+      ["due", "Details", "Main spot, social cut, or edit name."],
     ],
     image: [
       ["title", "Image title", "Storyboard frame"],
@@ -2464,7 +2511,7 @@ function openDialog(intent = createIntent) {
   dialogSubtitle.hidden = true;
   dialogSubtitle.textContent = "";
   if (createSubmit) {
-    createSubmit.textContent = intent === "version" || intent === "video" ? "Upload" : "Save";
+    createSubmit.textContent = intent === "version" ? "Upload" : "Save";
     createSubmit.disabled = false;
   }
   document.querySelector("#cancelDialog").textContent = "Cancel";
@@ -2529,7 +2576,7 @@ async function handleCreateFormSubmit(event) {
     selectedVideoId: state.selectedVideoId,
   };
   saveButton.disabled = true;
-  const uploadsVideo = createIntent === "version" || createIntent === "video";
+  const uploadsVideo = createIntent === "version";
   let pendingVersionNotice = null;
   saveButton.textContent = uploadsVideo ? "Starting upload..." : "Saving...";
   showToast(uploadsVideo ? "Starting upload..." : "Saving...");
@@ -2583,42 +2630,7 @@ async function handleCreateFormSubmit(event) {
       };
       state.videos.unshift(video);
       state.selectedVideoId = videoId;
-
-      const file = form.get("file");
-      const label = form.get("label") || "Version 1";
-      const provider = form.get("provider") || "Bunny Stream";
-      let embedUrl = form.get("embedUrl") || "";
-      let bunnyVideoId = "";
-
-      if (file?.size) {
-        const upload = await uploadVersionFileToBunny({
-          file,
-          title: `${video.title} - ${label}`,
-          button: saveButton,
-        });
-        embedUrl = upload.embedUrl;
-        bunnyVideoId = upload.videoId;
-      }
-
-      if (embedUrl.trim() || bunnyVideoId) {
-        const version = {
-          id: `version-${nowId}`,
-          videoId,
-          label,
-          provider,
-          embedUrl,
-          bunnyVideoId,
-          note: form.get("note") || "New review version.",
-          createdAt: "Just now",
-          approved: false,
-        };
-        state.versions.unshift(version);
-        pendingVersionNotice = {
-          project: activeProject(),
-          video,
-          version,
-        };
-      }
+      state.selectedVersionId = "";
     }
 
     if (createIntent === "image") {
@@ -2636,22 +2648,9 @@ async function handleCreateFormSubmit(event) {
 
     if (createIntent === "version") {
       const project = activeProject();
-      let video =
-        projectVideos(project?.id).find((item) => item.id === state.selectedVideoId) ||
-        projectVideos(project?.id)[0];
+      const video = projectVideos(project?.id).find((item) => item.id === state.selectedVideoId);
       if (!video) {
-        if (!project) throw new Error("Open a project before uploading");
-        const title = project.name || "New Video";
-        const videoId = `${slug(title) || "video"}-${nowId}`;
-        video = {
-          id: videoId,
-          projectId: project.id,
-          title,
-          status: "draft",
-          due: "Soon",
-        };
-        state.videos.unshift(video);
-        state.selectedVideoId = videoId;
+        throw new Error("Open a video before uploading a version.");
       }
 
       const file = form.get("file");
@@ -2687,6 +2686,7 @@ async function handleCreateFormSubmit(event) {
       };
       state.versions.unshift(version);
       state.selectedVideoId = video.id;
+      state.selectedVersionId = version.id;
       pendingVersionNotice = {
         project,
         video,
@@ -2706,7 +2706,14 @@ async function handleCreateFormSubmit(event) {
     }
     dialog.close();
     createForm.reset();
-    showToast(notifiedClient ? "Video saved and client emailed" : uploadsVideo ? "Video saved" : "Saved");
+    const successMessage = notifiedClient
+      ? "Version saved and client emailed"
+      : uploadsVideo
+        ? "Version saved"
+        : createIntent === "video"
+          ? "Video added"
+          : "Saved";
+    showToast(successMessage);
     if (createIntent === "project") renderProjects();
     else if (createIntent === "video" || createIntent === "image") renderProjectDetail();
     else if (createIntent === "version") renderReviewShell(state.mode === "admin");
