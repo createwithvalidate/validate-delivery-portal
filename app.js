@@ -965,6 +965,12 @@ function activeClientAccount() {
   );
 }
 
+function currentCommentAuthor(isAdmin) {
+  if (isAdmin) return state.session?.email || "Validate";
+  const account = activeClientAccount();
+  return account?.contact || account?.name || state.clientAccount?.name || state.session?.email || "Client";
+}
+
 function setRoute(nextRoute) {
   route = nextRoute;
   state.route = nextRoute;
@@ -1989,7 +1995,7 @@ function renderReviewShell(isAdmin) {
     const comment = {
       id: `comment-${Date.now()}`,
       versionId: version.id,
-      author: isAdmin ? "Validate" : "Client",
+      author: currentCommentAuthor(isAdmin),
       role: isAdmin ? "admin" : "client",
       body,
       createdAt: "Just now",
