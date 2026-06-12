@@ -1874,8 +1874,8 @@ function renderReviewShell(isAdmin) {
   createIntent = isAdmin ? "version" : "approve";
 
   root.innerHTML = `
-    <div class="project-layout">
-      <section class="panel">
+    <div class="project-layout review-layout">
+      <section class="panel review-main-panel">
         <div class="video-frame">
           ${
             version?.embedUrl
@@ -1894,7 +1894,7 @@ function renderReviewShell(isAdmin) {
             <span class="status-pill ${version?.approved ? "approved" : ""}">${version?.approved ? "approved" : "in review"}</span>
           </div>
         </div>
-        <div class="panel">
+        <div class="panel comments-panel">
           <p class="eyebrow">Comments</p>
           ${
             comments.length
@@ -1912,15 +1912,15 @@ function renderReviewShell(isAdmin) {
                     `,
                   )
                   .join("")
-              : `<div class="empty compact-empty">No notes yet. Add the first review note below.</div>`
+              : `<div class="empty compact-empty">No comments yet. Add the first review comment below.</div>`
           }
           <form class="comment-form" id="commentForm">
-            <textarea name="body" placeholder="Add a note for this version"></textarea>
+            <textarea name="body" placeholder="Add a comment for this version"></textarea>
             <button class="primary-button" ${version ? "" : "disabled"}>Add comment</button>
           </form>
         </div>
       </section>
-      <aside class="panel stack">
+      <aside class="panel stack review-side-panel">
         <p class="eyebrow">Version history</p>
         ${
           versions.length
