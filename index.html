@@ -9,7 +9,7 @@
     />
     <title>Validate Delivery Portal</title>
     <link rel="preconnect" href="https://createwithvalidate.com" />
-    <link rel="stylesheet" href="styles.css?v=77" />
+    <link rel="stylesheet" href="styles.css?v=78" />
   </head>
   <body>
     <section class="login-screen" id="loginScreen" data-bg-index="0">
@@ -109,8 +109,12 @@
         </nav>
 
         <div class="sidebar-footer">
-          <p>Secure review links, version notes, comments, and approvals for active cuts.</p>
-          <button class="ghost-button" id="copyClientLink">Copy review link</button>
+          <div class="account-summary">
+            <span class="session-label" id="sessionLabel"></span>
+            <strong id="sessionName">Signed out</strong>
+            <small id="sessionEmail"></small>
+          </div>
+          <button class="sign-out-button" id="signOut">Sign out</button>
         </div>
       </aside>
 
@@ -121,10 +125,8 @@
             <h1 id="pageTitle">Clients</h1>
           </div>
           <div class="topbar-actions">
-            <span class="session-label" id="sessionLabel"></span>
             <button class="primary-button" id="openCreate">New client</button>
             <button class="delete-client-button" id="deleteClientAction" hidden>Delete client</button>
-            <button class="sign-out-button" id="signOut">Sign out</button>
           </div>
         </header>
 
@@ -175,6 +177,6 @@
     <div class="toast" id="toast" role="status"></div>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/tus-js-client@4.3.1/dist/tus.min.js" defer></script>
-    <script src="app.js?v=77" defer></script>
+    <script src="app.js?v=78" defer></script>
   </body>
 </html>

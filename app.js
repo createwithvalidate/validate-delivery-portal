@@ -61,6 +61,8 @@ const dialogSubtitle = document.querySelector("#dialogSubtitle");
 const createForm = document.querySelector("#createForm");
 const createSubmit = document.querySelector("#createSubmit");
 const deleteClientAction = document.querySelector("#deleteClientAction");
+const sessionName = document.querySelector("#sessionName");
+const sessionEmail = document.querySelector("#sessionEmail");
 const toast = document.querySelector("#toast");
 
 let route = state.route || "clients";
@@ -247,6 +249,7 @@ function applyAccountSession(user, profile) {
   state.session = {
     role,
     email: user.email,
+    name: profile?.full_name || user.user_metadata?.full_name || user.email,
   };
   state.mode = role;
   state.clientAccount =
@@ -896,7 +899,20 @@ function setPageHeader(title, eyebrow = "Client delivery portal", style = "") {
   pageTitle.textContent = title;
   pageEyebrow.textContent = eyebrow;
   topbar.classList.toggle("client-title-card", style === "client");
-  if (deleteClientAction) deleteClientAction.hidden = true;
+  if (deleteClientAction) {
+    deleteClientAction.hidden = true;
+    deleteClientAction.dataset.action = "";
+    deleteClientAction.dataset.clientId = "";
+    deleteClientAction.dataset.projectId = "";
+  }
+}
+
+function updateSessionFooter() {
+  const name = state.clientAccount?.name || state.session?.name || state.session?.email || "Signed in";
+  const email = state.session?.email || "";
+  if (sessionLabel) sessionLabel.textContent = state.session?.role ? state.session.role : "";
+  if (sessionName) sessionName.textContent = name;
+  if (sessionEmail) sessionEmail.textContent = email;
 }
 
 function updateAuthView() {
@@ -910,7 +926,7 @@ function updateAuthView() {
   if (!isLoggedIn) return;
   startDashboardBackgroundRotation();
 
-  sessionLabel.textContent = "";
+  updateSessionFooter();
   document.querySelector("#openCreate").hidden = state.session.role !== "admin" || state.mode === "client";
   if (deleteClientAction) deleteClientAction.hidden = true;
 }
@@ -1330,6 +1346,38 @@ async function deleteClient(clientId) {
   renderClients();
 }
 
+async function deleteProject(projectId) {
+  const project = state.projects.find((item) => item.id === projectId);
+  if (!project) return;
+  const confirmed = window.confirm(`Delete ${project.name}?`);
+  if (!confirmed) return;
+  const veryConfirmed = window.confirm(`Are you very sure? This permanently deletes ${project.name}, its videos, versions, comments, images, and client access.`);
+  if (!veryConfirmed) return;
+
+  const videoIds = state.videos.filter((video) => video.projectId === projectId).map((video) => video.id);
+  const versionIds = state.versions.filter((version) => videoIds.includes(version.videoId)).map((version) => version.id);
+
+  state.projects = state.projects.filter((item) => item.id !== projectId);
+  state.videos = state.videos.filter((video) => !videoIds.includes(video.id));
+  state.versions = state.versions.filter((version) => !versionIds.includes(version.id));
+  state.comments = state.comments.filter((comment) => !versionIds.includes(comment.versionId));
+  state.deliveredProjectIds = state.deliveredProjectIds.filter((id) => id !== projectId);
+  if (state.selectedProjectId === projectId) state.selectedProjectId = "";
+  if (videoIds.includes(state.selectedVideoId)) state.selectedVideoId = "";
+  state.activity.unshift(`Deleted project ${project.name}`);
+  saveState();
+  try {
+    const supabase = getSupabase();
+    const { data: userData } = supabase ? await supabase.auth.getUser() : { data: {} };
+    if (userData?.user) await supabase.from("projects").delete().eq("id", projectId);
+  } catch (error) {
+    console.warn("Supabase project delete failed", error);
+    showToast("Deleted locally. Supabase did not delete yet.");
+  }
+  showToast("Project deleted");
+  renderProjects();
+}
+
 function setHeroMode(mode, projects = []) {
   if (!dashboardHero) return;
   const isClient = mode === "client";
@@ -1661,6 +1709,8 @@ function renderProjects() {
   if (deleteClientAction) {
     deleteClientAction.hidden = state.session?.role !== "admin";
     deleteClientAction.dataset.clientId = client.id;
+    deleteClientAction.dataset.action = "client";
+    deleteClientAction.textContent = "Delete client";
   }
   createIntent = "project";
   const projects = state.projects.filter((project) => project.clientId === client.id && !project.archived);
@@ -1700,7 +1750,6 @@ function renderProjects() {
                         <div class="inline-actions">
                           <span class="status-pill ${project.status === "approved" ? "approved" : ""}">${project.status}</span>
                           <button class="ghost-button" data-project="${project.id}">Open</button>
-                          <button class="ghost-button" data-archive-project="${project.id}">Archive</button>
                         </div>
                       </div>
                     `;
@@ -1720,25 +1769,6 @@ function renderProjects() {
       if (video) state.selectedVideoId = video.id;
       saveState();
       renderProjectDetail();
-    });
-  });
-
-  root.querySelectorAll("[data-archive-project]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      const project = state.projects.find((item) => item.id === button.dataset.archiveProject);
-      if (!project) return;
-      const wasArchived = project.archived;
-      project.archived = true;
-      try {
-        await savePortalData();
-        showToast("Project archived");
-        renderProjects();
-      } catch (error) {
-        project.archived = wasArchived;
-        saveState();
-        showToast(error.message);
-        renderProjects();
-      }
     });
   });
 }
@@ -1765,6 +1795,12 @@ function renderProjectDetail() {
   setPageHeader(project.name);
   document.querySelector("#openCreate").textContent = "Add video";
   document.querySelector("#openCreate").hidden = state.session?.role !== "admin";
+  if (deleteClientAction) {
+    deleteClientAction.hidden = state.session?.role !== "admin";
+    deleteClientAction.dataset.projectId = project.id;
+    deleteClientAction.dataset.action = "project";
+    deleteClientAction.textContent = "Delete project";
+  }
   createIntent = "video";
 
   root.innerHTML = `
@@ -1794,14 +1830,14 @@ function renderProjectDetail() {
                     <button class="list-row media-row" type="button" data-video="${video.id}">
                       <div>
                         <h3>${video.title}</h3>
-                        <p class="muted">${version ? `Latest: ${version.label}` : "No versions yet."}</p>
+                        <p class="muted">${version ? `Latest: ${version.label}` : "Add first version."}</p>
                         <div class="meta-strip">
                           <span>${versionCountLabel(versions.length)}</span>
                           ${noteCount ? `<span>${noteCount} comments</span>` : ""}
                         </div>
                       </div>
                       <div class="inline-actions">
-                        <span class="open-arrow">Open</span>
+                        <span class="open-arrow">${versions.length ? "Open" : "Add first version"}</span>
                       </div>
                     </button>
                   `;
@@ -2114,7 +2150,7 @@ function renderReviewShell(isAdmin) {
       </section>
       <aside class="panel stack review-side-panel">
         <p class="eyebrow">Versions</p>
-        ${isAdmin ? `<button class="primary-button" id="addReviewVersion">Upload new version</button>` : ""}
+        ${isAdmin ? `<button class="primary-button" id="addReviewVersion">${versions.length ? "Upload new version" : "Add first version"}</button>` : ""}
         ${
           versions.length
             ? versions
@@ -2445,7 +2481,6 @@ function openDialog(intent = createIntent) {
       ["label", "Version label", "Version 4"],
       ["provider", "Provider", "Bunny Stream"],
       ["file", "Video file", ""],
-      ["embedUrl", "Embed URL", ""],
       ["note", "Version note", "Updated music and end card."],
     ],
   };
@@ -2474,12 +2509,13 @@ function openDialog(intent = createIntent) {
     return;
   }
 
+  const isFirstVersion = intent === "version" && !videoVersions(activeVideo()?.id).length;
   dialogTitle.textContent = {
     client: "New client",
     project: "New project",
     video: "Add video",
     image: "Add image",
-    version: "Upload new version",
+    version: isFirstVersion ? "Add first version" : "Upload new version",
   }[intent];
   dialogEyebrow.hidden = false;
   dialogEyebrow.textContent = "Create";
@@ -2631,11 +2667,11 @@ async function handleCreateFormSubmit(event) {
       const file = form.get("file");
       const label = form.get("label") || "New version";
       const provider = form.get("provider") || "Bunny Stream";
-      let embedUrl = form.get("embedUrl") || "";
+      let embedUrl = "";
       let bunnyVideoId = "";
 
-      if (!file?.size && !embedUrl.trim()) {
-        throw new Error("Choose a video file or paste an embed URL before saving a version");
+      if (!file?.size) {
+        throw new Error("Choose a video file before saving a version");
       }
 
       if (file?.size) {
@@ -2747,6 +2783,11 @@ document.querySelector("#cancelDialog").addEventListener("click", () => {
   dialog.close();
 });
 deleteClientAction?.addEventListener("click", () => {
+  if (deleteClientAction.dataset.action === "project") {
+    const projectId = deleteClientAction.dataset.projectId || activeProject()?.id;
+    if (projectId) deleteProject(projectId);
+    return;
+  }
   const clientId = deleteClientAction.dataset.clientId || activeClient()?.id;
   if (clientId) deleteClient(clientId);
 });
@@ -2760,17 +2801,6 @@ document.querySelector("#signOut").addEventListener("click", async () => {
   loginForm.reset();
   render();
 });
-document.querySelector("#copyClientLink").addEventListener("click", async () => {
-  const project = activeProject();
-  if (!project) {
-    showToast("Open a project before copying a review link");
-    return;
-  }
-  const link = `${location.origin}${location.pathname}#review/${project.id}`;
-  await navigator.clipboard?.writeText(link);
-  showToast("Review link copied");
-});
-
 async function bootPortal() {
   setLoginRole("client");
   watchSupabaseAuth();

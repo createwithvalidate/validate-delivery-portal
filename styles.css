@@ -568,10 +568,35 @@ button:disabled {
 }
 
 .sidebar-footer {
+  display: grid;
+  gap: 12px;
   margin-top: auto;
   color: var(--muted);
   font-size: 0.9rem;
   line-height: 1.55;
+}
+
+.account-summary {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.account-summary strong,
+.account-summary small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-summary strong {
+  color: var(--text);
+  font-size: 0.96rem;
+}
+
+.account-summary small {
+  color: var(--dim);
+  font-size: 0.78rem;
 }
 
 .workspace {
@@ -679,6 +704,7 @@ button:disabled {
   color: rgba(251, 251, 251, 0.58);
   font-size: 0.82rem;
   font-weight: 700;
+  justify-self: start;
 }
 
 .delete-client-button {
