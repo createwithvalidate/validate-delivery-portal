@@ -101,7 +101,7 @@ function buildSmsBody(payload) {
   return compact(`${intro}${detail} Open: ${reviewUrl} Reply STOP to opt out.`);
 }
 
-async function sendTwilioSms({ to, body }) {
+async function sendTwilioSms({ to, body, statusCallbackUrl = "" }) {
   const accountSid = process.env.TWILIO_ACCOUNT_SID || "";
   const authTokenValue = process.env.TWILIO_AUTH_TOKEN || "";
   const messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID || "";
@@ -110,23 +110,33 @@ async function sendTwilioSms({ to, body }) {
     throw new Error("Add TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_MESSAGING_SERVICE_SID in Vercel.");
   }
 
+  const requestBody = new URLSearchParams({
+    MessagingServiceSid: messagingServiceSid,
+    To: to,
+    Body: body,
+  });
+  if (statusCallbackUrl) requestBody.set("StatusCallback", statusCallbackUrl);
+
   const twilioResponse = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
     method: "POST",
     headers: {
       Authorization: `Basic ${Buffer.from(`${accountSid}:${authTokenValue}`).toString("base64")}`,
       "Content-Type": "application/x-www-form-urlencoded",
     },
-    body: new URLSearchParams({
-      MessagingServiceSid: messagingServiceSid,
-      To: to,
-      Body: body,
-    }),
+    body: requestBody,
   });
   const result = await twilioResponse.json().catch(() => ({}));
   if (!twilioResponse.ok) {
     throw new Error(result.message || "Twilio could not send the SMS.");
   }
   return result;
+}
+
+function requestOrigin(request) {
+  const host = request.headers["x-forwarded-host"] || request.headers.host || "";
+  if (!host) return "";
+  const proto = request.headers["x-forwarded-proto"] || "https";
+  return `${proto}://${host}`;
 }
 
 module.exports = async function handler(request, response) {
@@ -221,11 +231,21 @@ module.exports = async function handler(request, response) {
 
     const to = phoneNumber;
     const body = buildSmsBody(payload);
-    const result = await sendTwilioSms({ to, body });
-    sendJson(response, 200, { ok: true, id: result.sid, to });
+    const result = await sendTwilioSms({
+      to,
+      body,
+      statusCallbackUrl: `${requestOrigin(request)}/api/twilio-status`,
+    });
+    console.info("Twilio SMS accepted", {
+      sid: result.sid,
+      status: result.status,
+      toLast4: String(to).slice(-4),
+    });
+    sendJson(response, 200, { ok: true, id: result.sid, status: result.status, to });
   } catch (error) {
     const message = error.message || "SMS could not be sent.";
     const missingColumns = ["phone_number", "sms_opt_in", "sms_opted_out"].some((field) => message.toLowerCase().includes(field));
+    console.error("SMS send failed", { message });
     sendJson(response, missingColumns ? 500 : 502, {
       error: missingColumns ? "Run the latest schema.sql in Supabase before sending SMS." : message,
     });

@@ -217,6 +217,12 @@ function smsSchemaMessage() {
   return "Run the latest schema.sql in Supabase before saving SMS selections.";
 }
 
+function smsStatusSummary(results = []) {
+  const statuses = [...new Set(results.map((result) => result.status).filter(Boolean))];
+  if (!statuses.length) return "";
+  return statuses.length === 1 ? statuses[0] : statuses.join(", ");
+}
+
 function projectRecipientEmails(projectId) {
   const explicit = clientEmails(state.projectRecipients?.[projectId]);
   if (explicit.length) return explicit;
@@ -2051,7 +2057,7 @@ async function smsProjectClient({ project, video, version, emails: explicitEmail
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(result.error || `SMS could not be sent to ${email}`);
-    results.push({ email, id: result.id });
+    results.push({ email, id: result.id, status: result.status || "" });
   }
   return { ok: true, sent: results.length, results };
 }
@@ -2201,6 +2207,7 @@ async function notifyProjectRecipients(button, targetEmails = null) {
     const smsReadyEmails = emails.filter((email) => canSendSmsToAccount(accountForEmail(email)));
     let smsSent = 0;
     let smsError = "";
+    let smsStatus = "";
     if (smsEmails.length) {
       button.textContent = "Sending SMS...";
       try {
@@ -2212,6 +2219,7 @@ async function notifyProjectRecipients(button, targetEmails = null) {
           smsType: "version",
         });
         smsSent = smsResult.sent || smsEmails.length;
+        smsStatus = smsStatusSummary(smsResult.results);
       } catch (error) {
         smsError = error.message || "SMS could not be sent yet";
       }
@@ -2227,7 +2235,9 @@ async function notifyProjectRecipients(button, targetEmails = null) {
         ? `Email sent. SMS needs setup: ${smsError}`
         : !smsEmails.length && smsReadyEmails.length
           ? "Email sent. SMS was not sent because no SMS clients are selected for this project."
-        : `Sent to ${emails.length} client account${emails.length === 1 ? "" : "s"}${smsSent ? ` / ${smsSent} SMS` : ""}`,
+        : `Sent to ${emails.length} client account${emails.length === 1 ? "" : "s"}${
+            smsSent ? ` / ${smsSent} SMS accepted${smsStatus ? ` (${smsStatus})` : ""}` : ""
+          }`,
     );
   } catch (error) {
     showToast(error.message || "Clients could not be notified");
