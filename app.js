@@ -1177,7 +1177,9 @@ function renderCurrentView() {
   }
 
   if (state.mode === "client") {
-    if (currentView === "clientReview" && state.selectedVideoId) renderClientReview();
+    if (currentView === "activity") renderActivity();
+    else if (currentView === "settings") renderSettings();
+    else if (currentView === "clientReview" && state.selectedVideoId) renderClientReview();
     else if (currentView === "clientProject" && state.selectedProjectId) renderClientProject();
     else renderClientDashboard();
     return;
@@ -1511,7 +1513,8 @@ function renderUnopenedNotice(status) {
 function setRoute(nextRoute) {
   route = nextRoute;
   state.route = nextRoute;
-  rememberView(nextRoute === "activity" || nextRoute === "settings" ? nextRoute : "clients");
+  const homeView = state.session?.role === "client" ? "clientDashboard" : "clients";
+  rememberView(nextRoute === "activity" || nextRoute === "settings" ? nextRoute : homeView);
   document.querySelectorAll(".nav-item").forEach((item) => {
     item.classList.toggle("active", item.dataset.route === route);
   });
