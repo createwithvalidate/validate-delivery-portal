@@ -213,6 +213,10 @@ function canSendSmsToAccount(account = {}) {
   return Boolean(account.phoneNumber && account.smsOptIn && !account.smsOptedOut);
 }
 
+function smsSchemaMessage() {
+  return "Run the latest schema.sql in Supabase before saving SMS selections.";
+}
+
 function projectRecipientEmails(projectId) {
   const explicit = clientEmails(state.projectRecipients?.[projectId]);
   if (explicit.length) return explicit;
@@ -931,6 +935,9 @@ async function persistPortalDataToSupabase() {
   if (accessRows.length) {
     const { error } = await client.from("project_access").upsert(accessRows);
     if (error?.message?.toLowerCase?.().includes("sms_enabled")) {
+      if (accessRows.some((row) => row.sms_enabled)) {
+        throw new Error(smsSchemaMessage());
+      }
       await runSave(
         client.from("project_access").upsert(
           accessRows.map(({ project_id, email }) => ({ project_id, email })),
@@ -2058,6 +2065,9 @@ async function replaceProjectAccessInSupabase(projectId) {
   if (!rows.length) return [];
   let { data, error } = await supabase.from("project_access").upsert(rows).select("project_id,email,sms_enabled");
   if (error?.message?.toLowerCase?.().includes("sms_enabled")) {
+    if (rows.some((row) => row.sms_enabled)) {
+      throw new Error(smsSchemaMessage());
+    }
     const fallback = await supabase
       .from("project_access")
       .upsert(rows.map(({ project_id, email }) => ({ project_id, email })))
@@ -2188,6 +2198,7 @@ async function notifyProjectRecipients(button, targetEmails = null) {
       const account = accountForEmail(email);
       return emails.includes(email) && canSendSmsToAccount(account);
     });
+    const smsReadyEmails = emails.filter((email) => canSendSmsToAccount(accountForEmail(email)));
     let smsSent = 0;
     let smsError = "";
     if (smsEmails.length) {
@@ -2214,6 +2225,8 @@ async function notifyProjectRecipients(button, targetEmails = null) {
     showToast(
       smsError
         ? `Email sent. SMS needs setup: ${smsError}`
+        : !smsEmails.length && smsReadyEmails.length
+          ? "Email sent. SMS was not sent because no SMS clients are selected for this project."
         : `Sent to ${emails.length} client account${emails.length === 1 ? "" : "s"}${smsSent ? ` / ${smsSent} SMS` : ""}`,
     );
   } catch (error) {
@@ -3749,8 +3762,17 @@ function setupAccountPicker({
 } = {}) {
   const selectedEmails = new Set(clientEmails(selected));
   const selectedSmsEmails = new Set(clientEmails(selectedSms));
+  const defaultSmsForSelected = enableSms && selectedEmails.size > 0 && selectedSmsEmails.size === 0;
   const search = dialogFields.querySelector("#accountSearch");
   const options = dialogFields.querySelector("#accountOptions");
+
+  const addDefaultSmsRecipients = () => {
+    if (!defaultSmsForSelected) return;
+    selectedEmails.forEach((email) => {
+      const account = accountForEmail(email);
+      if (canSendSmsToAccount(account)) selectedSmsEmails.add(email);
+    });
+  };
 
   const renderOptions = () => {
     renderAccountOptions({
@@ -3772,8 +3794,11 @@ function setupAccountPicker({
     const smsCheckbox = event.target.closest("[data-sms-email]");
     if (checkbox) {
       const email = normalizeEmail(checkbox.dataset.accountEmail || checkbox.value);
-      if (checkbox.checked) selectedEmails.add(email);
-      else {
+      if (checkbox.checked) {
+        selectedEmails.add(email);
+        const account = accountForEmail(email);
+        if (enableSms && canSendSmsToAccount(account)) selectedSmsEmails.add(email);
+      } else {
         selectedEmails.delete(email);
         selectedSmsEmails.delete(email);
       }
@@ -3790,10 +3815,16 @@ function setupAccountPicker({
     renderOptions();
   });
 
-  if (state.accountDirectory?.length) renderOptions();
+  if (state.accountDirectory?.length) {
+    addDefaultSmsRecipients();
+    renderOptions();
+  }
 
   loadAccountDirectory({ force: true })
-    .then(renderOptions)
+    .then(() => {
+      addDefaultSmsRecipients();
+      renderOptions();
+    })
     .catch((error) => {
       if (options) {
         options.innerHTML = `
