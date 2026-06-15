@@ -1825,6 +1825,16 @@ function renderProjectImageGrid(images, { emptyText = "No project images yet." }
   `;
 }
 
+function renderMetaStrip(items = []) {
+  const visibleItems = items.filter((item) => item?.show);
+  if (!visibleItems.length) return "";
+  return `
+    <div class="meta-strip">
+      ${visibleItems.map((item) => `<span>${escapeHtml(item.label)}</span>`).join("")}
+    </div>
+  `;
+}
+
 function versionCountLabel(count) {
   return `${count} version${count === 1 ? "" : "s"}`;
 }
@@ -2586,11 +2596,11 @@ function renderProjects() {
                         <p class="eyebrow">${project.status}</p>
                         <h3>${project.name}</h3>
                         <p>${project.description}</p>
-                        <div class="meta-strip">
-                          <span>${videos.length} videos</span>
-                          <span>${versions} versions</span>
-                          <span>${images.length} images</span>
-                        </div>
+                        ${renderMetaStrip([
+                          { show: videos.length > 0, label: `${videos.length} video${videos.length === 1 ? "" : "s"}` },
+                          { show: versions > 0, label: versionCountLabel(versions) },
+                          { show: images.length > 0, label: `${images.length} image${images.length === 1 ? "" : "s"}` },
+                        ])}
                         <div class="card-footer">
                           <span class="metric">${recipients.length ? `${recipients.length} shared` : "not shared"}</span>
                           <button class="ghost-button" data-project="${project.id}">Open</button>
@@ -2754,21 +2764,16 @@ function renderClientDashboard() {
                   const versions = videos.flatMap((video) => videoVersions(video.id));
                   const latest = versions[0];
                   const approvedCount = versions.filter((version) => version.approved).length;
-                  const noteCount = versions.reduce(
-                    (total, version) => total + visibleCommentsForVersion(version.id).length,
-                    0,
-                  );
                   return `
                     <article class="card client-project-card">
                       <p class="eyebrow">${project.status}</p>
                       <h3>${project.name}</h3>
                       <p>${project.description || "Review files and notes for this project."}</p>
-                      <div class="meta-strip">
-                        <span>${videos.length} video${videos.length === 1 ? "" : "s"}</span>
-                        <span>${versions.length} version${versions.length === 1 ? "" : "s"}</span>
-                        <span>${images.length} image${images.length === 1 ? "" : "s"}</span>
-                        <span>${noteCount} note${noteCount === 1 ? "" : "s"}</span>
-                      </div>
+                      ${renderMetaStrip([
+                        { show: videos.length > 0, label: `${videos.length} video${videos.length === 1 ? "" : "s"}` },
+                        { show: versions.length > 0, label: versionCountLabel(versions.length) },
+                        { show: images.length > 0, label: `${images.length} image${images.length === 1 ? "" : "s"}` },
+                      ])}
                       <div class="card-footer">
                         <span class="metric">${latest?.approved ? "approved" : approvedCount ? `${approvedCount} approved` : "in review"}</span>
                         <button class="ghost-button" data-client-project="${project.id}" ${videos.length || images.length ? "" : "disabled"}>
