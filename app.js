@@ -927,21 +927,6 @@ async function persistPortalDataToSupabase() {
       "Versions",
     );
   }
-  if (state.comments.length) {
-    await runSave(
-      client.from("comments").upsert(
-        state.comments.map((item) => ({
-          id: item.id,
-          version_id: item.versionId,
-          author: item.author,
-          role: item.role,
-          body: item.body,
-          created_at_label: item.createdAt || "Just now",
-        })),
-      ),
-      "Comments",
-    );
-  }
   const accessRows = projectAccessRowsForSave();
   if (accessRows.length) {
     const { error } = await client.from("project_access").upsert(accessRows);
@@ -3167,13 +3152,10 @@ function renderReviewShell(isAdmin) {
     };
     state.comments.unshift(comment);
     try {
-      if (isAdmin) await savePortalData();
-      else {
-        saveState();
-        const savedComment = await insertCommentInSupabase(comment);
-        if (savedComment) upsertById(state.comments, mapCommentRow(savedComment));
-        saveState();
-      }
+      saveState();
+      const savedComment = await insertCommentInSupabase(comment);
+      if (savedComment) upsertById(state.comments, mapCommentRow(savedComment));
+      saveState();
       renderReviewShell(isAdmin);
     } catch (error) {
       state.comments = state.comments.filter((item) => item.id !== comment.id);

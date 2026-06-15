@@ -2,6 +2,7 @@ const supabaseUrl = process.env.SUPABASE_URL || "https://axvnifoamejuxxqhezwr.su
 const supabasePublishableKey =
   process.env.SUPABASE_PUBLISHABLE_KEY || "sb_publishable_IFOVI5nvp8DdOeqAs4lNsg__Iewd4BN";
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+const firstAdminEmail = "henry@createwithvalidate.com";
 
 function sendJson(response, statusCode, body) {
   response.statusCode = statusCode;
@@ -116,6 +117,10 @@ module.exports = async function handler(request, response) {
       return;
     }
 
+    const profileParams = new URLSearchParams({ select: "role,full_name,email", id: `eq.${user.id}`, limit: "1" });
+    const [profile] = await getRows("profiles", profileParams);
+    const isAdmin = profile?.role === "admin" || email === firstAdminEmail;
+
     const versionParams = new URLSearchParams({ select: "id,video_id", id: `eq.${versionId}`, limit: "1" });
     const [version] = await getRows("video_versions", versionParams);
     if (!version?.video_id) {
@@ -130,23 +135,25 @@ module.exports = async function handler(request, response) {
       return;
     }
 
-    const accessParams = new URLSearchParams({
-      select: "project_id,email",
-      project_id: `eq.${video.project_id}`,
-      email: `ilike.${email}`,
-      limit: "1",
-    });
-    const [access] = await getRows("project_access", accessParams);
-    if (!access) {
-      sendJson(response, 403, { error: "This project is not available for your account." });
-      return;
+    if (!isAdmin) {
+      const accessParams = new URLSearchParams({
+        select: "project_id,email",
+        project_id: `eq.${video.project_id}`,
+        email: `ilike.${email}`,
+        limit: "1",
+      });
+      const [access] = await getRows("project_access", accessParams);
+      if (!access) {
+        sendJson(response, 403, { error: "This project is not available for your account." });
+        return;
+      }
     }
 
     const comment = {
       id: String(payload.id || `comment-${Date.now()}`),
       version_id: versionId,
-      author: String(payload.author || user.user_metadata?.full_name || email),
-      role: "client",
+      author: String(payload.author || profile?.full_name || user.user_metadata?.full_name || email),
+      role: isAdmin ? "admin" : "client",
       body,
       created_at_label: String(payload.createdAt || "Just now"),
     };
