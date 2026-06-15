@@ -1806,27 +1806,6 @@ async function notifyProjectRecipients(button) {
   }
 }
 
-async function notifyClientOfNewVersion({ project, video, version }) {
-  const emails = projectRecipientEmails(project?.id);
-  if (!emails.length || !project || !video || !version) return false;
-
-  await emailProjectClient({
-    client: {
-      name: emails.length === 1 ? accountNameForEmail(emails[0]) : `${emails.length} client accounts`,
-      contact: emails.length === 1 ? accountNameForEmail(emails[0]) : "Client team",
-      email: emails.join(","),
-    },
-    project,
-    video,
-    version,
-    emails,
-    emailType: "version",
-  });
-  state.activity.unshift(`Notified ${emails.length} client account${emails.length === 1 ? "" : "s"} about ${version.label} for ${video.title}`);
-  await savePortalData();
-  return true;
-}
-
 async function createBunnyUploadCredentials({ title }) {
   const response = await fetch(apiUrl("/api/create-bunny-upload"), {
     method: "POST",
@@ -3029,7 +3008,6 @@ async function handleCreateFormSubmit(event) {
   };
   saveButton.disabled = true;
   const uploadsVideo = createIntent === "version";
-  let pendingVersionNotice = null;
   saveButton.textContent = uploadsVideo ? "Starting upload..." : "Saving...";
   showToast(uploadsVideo ? "Starting upload..." : "Saving...");
   syncPaused = true;
@@ -3153,32 +3131,17 @@ async function handleCreateFormSubmit(event) {
       state.versions.unshift(version);
       state.selectedVideoId = video.id;
       state.selectedVersionId = version.id;
-      pendingVersionNotice = {
-        project,
-        video,
-        version,
-      };
     }
 
     saveButton.textContent = uploadsVideo ? "Saving version..." : createIntent === "image" ? "Saving image..." : "Saving...";
     await saveAndReloadPortalData();
-    let notifiedClient = false;
-    if (pendingVersionNotice) {
-      saveButton.textContent = "Checking invite...";
-      if (projectRecipientEmails(pendingVersionNotice.project?.id).length) {
-        saveButton.textContent = "Emailing client...";
-        notifiedClient = await notifyClientOfNewVersion(pendingVersionNotice);
-      }
-    }
     dialog.close();
     createForm.reset();
-    const successMessage = notifiedClient
-      ? "Version saved and client emailed"
-      : uploadsVideo
-        ? "Version saved"
-        : createIntent === "video"
-          ? "Video added"
-          : "Saved";
+    const successMessage = uploadsVideo
+      ? "Version saved"
+      : createIntent === "video"
+        ? "Video added"
+        : "Saved";
     showToast(successMessage);
     if (createIntent === "project") renderProjects();
     else if (createIntent === "video" || createIntent === "image") renderProjectDetail();
