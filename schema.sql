@@ -15,6 +15,9 @@ create table if not exists profiles (
 );
 
 alter table profiles add column if not exists avatar_url text;
+alter table profiles add column if not exists phone_number text;
+alter table profiles add column if not exists sms_opt_in boolean not null default false;
+alter table profiles add column if not exists sms_opted_out boolean not null default false;
 
 create table if not exists invites (
   id uuid primary key default gen_random_uuid(),
@@ -87,9 +90,12 @@ create table if not exists project_access (
   project_id text not null references projects(id) on delete cascade,
   user_id uuid references auth.users(id) on delete cascade,
   email text not null,
+  sms_enabled boolean not null default false,
   granted_at timestamptz not null default now(),
   primary key (project_id, email)
 );
+
+alter table project_access add column if not exists sms_enabled boolean not null default false;
 
 create or replace function public.handle_new_user()
 returns trigger
@@ -117,12 +123,15 @@ begin
     raise exception 'A valid invite is required to create an account.';
   end if;
 
-  insert into profiles (id, email, full_name, avatar_url, role)
+  insert into profiles (id, email, full_name, avatar_url, phone_number, sms_opt_in, sms_opted_out, role)
   values (
     new.id,
     new.email,
     coalesce(new.raw_user_meta_data->>'full_name', split_part(new.email, '@', 1)),
     new.raw_user_meta_data->>'avatar_url',
+    nullif(new.raw_user_meta_data->>'phone_number', ''),
+    coalesce((new.raw_user_meta_data->>'sms_opt_in')::boolean, false),
+    false,
     case
       when lower(new.email) = 'henry@createwithvalidate.com' then 'admin'
       when invited_role is not null then invited_role
@@ -133,6 +142,9 @@ begin
     email = excluded.email,
     full_name = excluded.full_name,
     avatar_url = coalesce(excluded.avatar_url, profiles.avatar_url),
+    phone_number = coalesce(excluded.phone_number, profiles.phone_number),
+    sms_opt_in = excluded.sms_opt_in,
+    sms_opted_out = profiles.sms_opted_out,
     role = excluded.role;
 
   update invites
@@ -325,18 +337,24 @@ create policy "clients_read_own_project_access" on project_access
 delete from invites
 where code in ('VALIDATE-ADMIN-BETA', 'VALIDATE-CLIENT-BETA');
 
-insert into profiles (id, email, full_name, avatar_url, role)
+insert into profiles (id, email, full_name, avatar_url, phone_number, sms_opt_in, sms_opted_out, role)
 select
   id,
   email,
   coalesce(raw_user_meta_data->>'full_name', split_part(email, '@', 1)),
   raw_user_meta_data->>'avatar_url',
+  nullif(raw_user_meta_data->>'phone_number', ''),
+  coalesce((raw_user_meta_data->>'sms_opt_in')::boolean, false),
+  false,
   case when lower(email) = 'henry@createwithvalidate.com' then 'admin' else 'client' end
 from auth.users
 on conflict (id) do update set
   email = excluded.email,
   full_name = coalesce(profiles.full_name, excluded.full_name),
   avatar_url = coalesce(profiles.avatar_url, excluded.avatar_url),
+  phone_number = coalesce(profiles.phone_number, excluded.phone_number),
+  sms_opt_in = profiles.sms_opt_in or excluded.sms_opt_in,
+  sms_opted_out = profiles.sms_opted_out,
   role = case
     when lower(excluded.email) = 'henry@createwithvalidate.com' then 'admin'
     else profiles.role

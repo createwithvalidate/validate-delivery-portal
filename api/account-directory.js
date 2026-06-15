@@ -88,14 +88,17 @@ module.exports = async function handler(request, response) {
     }
 
     const accountParams = new URLSearchParams({
-      select: "id,email,full_name,role,created_at,avatar_url",
+      select: "id,email,full_name,role,created_at,avatar_url,phone_number,sms_opt_in,sms_opted_out",
       order: "created_at.desc",
     });
     let accounts;
     try {
       accounts = await getRows("profiles", accountParams);
     } catch (error) {
-      if (!error.message?.toLowerCase?.().includes("avatar_url")) throw error;
+      const message = error.message?.toLowerCase?.() || "";
+      if (!["avatar_url", "phone_number", "sms_opt_in", "sms_opted_out"].some((field) => message.includes(field))) {
+        throw error;
+      }
       const fallbackParams = new URLSearchParams({
         select: "id,email,full_name,role,created_at",
         order: "created_at.desc",
@@ -111,6 +114,9 @@ module.exports = async function handler(request, response) {
         role: account.role,
         createdAt: account.created_at,
         avatarUrl: account.avatar_url || "",
+        phoneNumber: account.phone_number || "",
+        smsOptIn: Boolean(account.sms_opt_in),
+        smsOptedOut: Boolean(account.sms_opted_out),
       })),
     });
   } catch (error) {

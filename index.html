@@ -9,7 +9,7 @@
     />
     <title>Validate Delivery Portal</title>
     <link rel="preconnect" href="https://createwithvalidate.com" />
-    <link rel="stylesheet" href="styles.css?v=94" />
+    <link rel="stylesheet" href="styles.css?v=95" />
   </head>
   <body>
     <section class="login-screen" id="loginScreen" data-bg-index="0">
@@ -58,6 +58,16 @@
             Full name
             <input name="fullName" placeholder="Your name" />
           </label>
+          <div class="signup-sms-fields" id="phoneField" hidden>
+            <label>
+              Phone number
+              <input name="phoneNumber" type="tel" placeholder="+1 417 555 0199" />
+            </label>
+            <label class="toggle-row">
+              <input name="smsOptIn" type="checkbox" value="yes" />
+              <span>Allow SMS review notifications</span>
+            </label>
+          </div>
           <label id="inviteCodeField" hidden>
             Invite code
             <input name="inviteCode" placeholder="Paste invite code" />
@@ -177,6 +187,6 @@
     <div class="toast" id="toast" role="status"></div>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/tus-js-client@4.3.1/dist/tus.min.js" defer></script>
-    <script src="app.js?v=94" defer></script>
+    <script src="app.js?v=95" defer></script>
   </body>
 </html>

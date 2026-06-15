@@ -299,6 +299,37 @@ button:disabled {
   min-height: 42px;
 }
 
+.signup-sms-fields {
+  display: grid;
+  gap: 10px;
+}
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.045);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.toggle-row input {
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  margin: 0;
+  accent-color: var(--text);
+}
+
+.toggle-row span {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
 .admin-access-button {
   min-height: 36px;
   border: 0;
@@ -2227,8 +2258,8 @@ textarea {
 }
 
 .account-option {
-  display: flex;
-  grid-template-columns: auto 1fr;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 11px;
   min-height: 58px;
@@ -2270,12 +2301,22 @@ textarea {
 
 .account-option-main {
   display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.account-option-main > span {
+  display: grid;
   gap: 3px;
   min-width: 0;
 }
 
 .account-option-main strong,
-.account-option-main span {
+.account-option-main > span > span,
+.account-option-main small {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2286,9 +2327,45 @@ textarea {
   font-size: 0.95rem;
 }
 
-.account-option-main span {
+.account-option-main > span > span {
   color: var(--dim);
   font-size: 0.78rem;
+}
+
+.account-option-main small {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.sms-option {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 7px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-size: 0.76rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.sms-option input {
+  width: 15px;
+  min-width: 15px;
+  height: 15px;
+  min-height: 15px;
+}
+
+.sms-option.is-disabled {
+  color: var(--dim);
+  cursor: not-allowed;
+  opacity: 0.52;
 }
 
 .account-empty {

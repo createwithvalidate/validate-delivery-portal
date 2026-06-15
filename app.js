@@ -16,6 +16,7 @@ const seedData = {
   activity: [],
   deliveredProjectIds: [],
   projectRecipients: {},
+  projectSmsRecipients: {},
   projectCollaborators: {},
   projectAccessRows: [],
   latestVersionByVideo: {},
@@ -34,6 +35,7 @@ state.session ??= null;
 state.clientAccount ??= null;
 state.deliveredProjectIds ??= [];
 state.projectRecipients ??= {};
+state.projectSmsRecipients ??= {};
 state.projectCollaborators ??= {};
 state.projectAccessRows ??= [];
 state.latestVersionByVideo ??= {};
@@ -58,6 +60,7 @@ const loginSubmit = document.querySelector("#loginSubmit");
 const passwordField = document.querySelector("#passwordField");
 const nameField = document.querySelector("#nameField");
 const inviteCodeField = document.querySelector("#inviteCodeField");
+const phoneField = document.querySelector("#phoneField");
 const authModeToggle = document.querySelector("#authModeToggle");
 const accessCodeField = document.querySelector("#accessCodeField");
 const adminAccess = document.querySelector("#adminAccess");
@@ -140,6 +143,10 @@ function freshTimestampLabel() {
   return formatTimestamp(new Date().toISOString());
 }
 
+function normalizePhone(value = "") {
+  return String(value).trim().replace(/[^\d+]/g, "");
+}
+
 function clientEmails(clientOrValue = "") {
   const value = Array.isArray(clientOrValue)
     ? clientOrValue.join(",")
@@ -176,6 +183,9 @@ function mapAccountRow(account = {}) {
     role: account.role === "admin" ? "admin" : "client",
     createdAt: account.createdAt || account.created_at || "",
     avatarUrl: account.avatarUrl || account.avatar_url || "",
+    phoneNumber: normalizePhone(account.phoneNumber || account.phone_number || ""),
+    smsOptIn: Boolean(account.smsOptIn ?? account.sms_opt_in),
+    smsOptedOut: Boolean(account.smsOptedOut ?? account.sms_opted_out),
   };
 }
 
@@ -199,6 +209,10 @@ function accountNameForEmail(email) {
   return account?.fullName || normalized;
 }
 
+function canSendSmsToAccount(account = {}) {
+  return Boolean(account.phoneNumber && account.smsOptIn && !account.smsOptedOut);
+}
+
 function projectRecipientEmails(projectId) {
   const explicit = clientEmails(state.projectRecipients?.[projectId]);
   if (explicit.length) return explicit;
@@ -208,13 +222,18 @@ function projectRecipientEmails(projectId) {
   return clientEmails(client);
 }
 
+function projectSmsRecipientEmails(projectId) {
+  return clientEmails(state.projectSmsRecipients?.[projectId]);
+}
+
 function projectCollaboratorEmails(projectId) {
   return clientEmails(state.projectCollaborators?.[projectId]);
 }
 
 function accessRowsForProject(projectId) {
   const emails = [...new Set([...projectRecipientEmails(projectId), ...projectCollaboratorEmails(projectId)])];
-  return emails.map((email) => ({ project_id: projectId, email }));
+  const smsEmails = new Set(projectSmsRecipientEmails(projectId));
+  return emails.map((email) => ({ project_id: projectId, email, sms_enabled: smsEmails.has(email) }));
 }
 
 function projectAccessRowsForSave() {
@@ -226,19 +245,26 @@ function applyProjectAccessRows(rows = []) {
     .map((row) => ({
       projectId: row.project_id || row.projectId,
       email: normalizeEmail(row.email),
+      smsEnabled: Boolean(row.sms_enabled ?? row.smsEnabled),
     }))
     .filter((row) => row.projectId && row.email);
   const recipients = {};
+  const smsRecipients = {};
   const collaborators = {};
 
   normalizedRows.forEach((row) => {
     const bucket = accountRoleForEmail(row.email) === "admin" ? collaborators : recipients;
     bucket[row.projectId] ??= [];
     if (!bucket[row.projectId].includes(row.email)) bucket[row.projectId].push(row.email);
+    if (accountRoleForEmail(row.email) !== "admin" && row.smsEnabled) {
+      smsRecipients[row.projectId] ??= [];
+      if (!smsRecipients[row.projectId].includes(row.email)) smsRecipients[row.projectId].push(row.email);
+    }
   });
 
   state.projectAccessRows = normalizedRows;
   state.projectRecipients = recipients;
+  state.projectSmsRecipients = smsRecipients;
   state.projectCollaborators = collaborators;
   state.deliveredProjectIds = Object.keys(recipients).filter((projectId) => recipients[projectId]?.length);
 }
@@ -311,7 +337,7 @@ async function signInWithSupabase(email, password) {
   };
 }
 
-async function createInviteAccount({ email, password, fullName, inviteCode }) {
+async function createInviteAccount({ email, password, fullName, inviteCode, phoneNumber = "", smsOptIn = false }) {
   const client = getSupabase();
   if (!client) throw new Error("Supabase is still loading. Try again in a moment.");
   const { data, error } = await client.auth.signUp({
@@ -321,6 +347,8 @@ async function createInviteAccount({ email, password, fullName, inviteCode }) {
       data: {
         full_name: fullName,
         invite_code: inviteCode,
+        phone_number: normalizePhone(phoneNumber),
+        sms_opt_in: Boolean(smsOptIn),
       },
     },
   });
@@ -333,10 +361,11 @@ async function getCurrentProfile(user) {
   if (!client || !user) return null;
   const { data, error } = await client
     .from("profiles")
-    .select("email, full_name, role, avatar_url")
+    .select("email, full_name, role, avatar_url, phone_number, sms_opt_in, sms_opted_out")
     .eq("id", user.id)
     .maybeSingle();
-  if (error?.message?.toLowerCase?.().includes("avatar_url")) {
+  const profileSelectError = error?.message?.toLowerCase?.() || "";
+  if (["avatar_url", "phone_number", "sms_opt_in", "sms_opted_out"].some((field) => profileSelectError.includes(field))) {
     const fallback = await client
       .from("profiles")
       .select("email, full_name, role")
@@ -355,6 +384,9 @@ async function getCurrentProfile(user) {
       full_name: user.user_metadata?.full_name || user.email,
       role: user.email?.toLowerCase() === firstAdminEmail ? "admin" : "client",
       avatar_url: user.user_metadata?.avatar_url || "",
+      phone_number: user.user_metadata?.phone_number || "",
+      sms_opt_in: Boolean(user.user_metadata?.sms_opt_in),
+      sms_opted_out: false,
     }
   );
 }
@@ -365,17 +397,26 @@ function fallbackProfileForUser(user) {
     full_name: user.user_metadata?.full_name || user.email,
     role: user.email?.toLowerCase() === firstAdminEmail ? "admin" : "client",
     avatar_url: user.user_metadata?.avatar_url || "",
+    phone_number: user.user_metadata?.phone_number || "",
+    sms_opt_in: Boolean(user.user_metadata?.sms_opt_in),
+    sms_opted_out: false,
   };
 }
 
 function applyAccountSession(user, profile) {
   const role = profile?.role === "admin" ? "admin" : "client";
   const avatarUrl = profile?.avatar_url || user.user_metadata?.avatar_url || "";
+  const phoneNumber = normalizePhone(profile?.phone_number || user.user_metadata?.phone_number || "");
+  const smsOptIn = Boolean(profile?.sms_opt_in ?? user.user_metadata?.sms_opt_in);
+  const smsOptedOut = Boolean(profile?.sms_opted_out);
   state.session = {
     role,
     email: user.email,
     name: profile?.full_name || user.user_metadata?.full_name || user.email,
     avatarUrl,
+    phoneNumber,
+    smsOptIn,
+    smsOptedOut,
   };
   state.mode = role;
   state.clientAccount =
@@ -386,6 +427,9 @@ function applyAccountSession(user, profile) {
           contact: profile?.full_name || user.email,
           email: user.email,
           avatarUrl,
+          phoneNumber,
+          smsOptIn,
+          smsOptedOut,
           summary: "Projects appear here after Validate sends a review.",
           archived: false,
         }
@@ -599,7 +643,7 @@ async function loadPortalDataFromSupabase() {
     client.from("video_versions").select("*").order("created_at", { ascending: false }),
     client.from("comments").select("*").order("created_at", { ascending: false }),
     client.from("project_access").select("*"),
-    client.from("profiles").select("id,email,full_name,role,created_at").order("created_at", { ascending: false }),
+    client.from("profiles").select("*").order("created_at", { ascending: false }),
   ]);
 
   const error =
@@ -900,7 +944,17 @@ async function persistPortalDataToSupabase() {
   }
   const accessRows = projectAccessRowsForSave();
   if (accessRows.length) {
-    await runSave(client.from("project_access").upsert(accessRows), "Project access");
+    const { error } = await client.from("project_access").upsert(accessRows);
+    if (error?.message?.toLowerCase?.().includes("sms_enabled")) {
+      await runSave(
+        client.from("project_access").upsert(
+          accessRows.map(({ project_id, email }) => ({ project_id, email })),
+        ),
+        "Project access",
+      );
+    } else if (error) {
+      throw new Error(`Project access did not save: ${error.message}`);
+    }
   }
 
   return true;
@@ -1238,6 +1292,7 @@ function portalFingerprint() {
     comments: state.comments,
     deliveredProjectIds: state.deliveredProjectIds,
     projectRecipients: state.projectRecipients,
+    projectSmsRecipients: state.projectSmsRecipients,
     projectCollaborators: state.projectCollaborators,
   });
 }
@@ -1494,6 +1549,7 @@ function setAuthMode(nextMode) {
   authMode = nextMode;
   const isCreate = authMode === "signup";
   if (nameField) nameField.hidden = !isCreate;
+  if (phoneField) phoneField.hidden = !isCreate;
   if (inviteCodeField) inviteCodeField.hidden = !isCreate;
   if (authModeToggle) authModeToggle.textContent = isCreate ? "Back to sign in" : "Create account from invite";
   loginSubmit.textContent =
@@ -1524,12 +1580,18 @@ async function completeSignup(form) {
   const password = String(form.get("password") || "").trim();
   const fullName = String(form.get("fullName") || "").trim();
   const inviteCode = String(form.get("inviteCode") || "").trim();
+  const phoneNumber = normalizePhone(form.get("phoneNumber"));
+  const smsOptIn = form.get("smsOptIn") === "yes";
   if (!email || !password || !fullName || !inviteCode) {
     showToast("Name, email, password, and invite code are required");
     return;
   }
+  if (smsOptIn && !phoneNumber) {
+    showToast("Add a phone number or turn off SMS notifications");
+    return;
+  }
 
-  await createInviteAccount({ email, password, fullName, inviteCode });
+  await createInviteAccount({ email, password, fullName, inviteCode, phoneNumber, smsOptIn });
   showToast("Account created. Check email if confirmation is required.");
   setAuthMode("signin");
 }
@@ -1838,6 +1900,7 @@ async function deleteClient(clientId) {
   state.comments = state.comments.filter((comment) => !versionIds.includes(comment.versionId));
   projectIds.forEach((projectId) => {
     delete state.projectRecipients[projectId];
+    delete state.projectSmsRecipients[projectId];
     delete state.projectCollaborators[projectId];
   });
   state.projectAccessRows = state.projectAccessRows.filter((row) => !projectIds.includes(row.projectId));
@@ -1876,6 +1939,7 @@ async function deleteProject(projectId) {
   state.comments = state.comments.filter((comment) => !versionIds.includes(comment.versionId));
   state.deliveredProjectIds = state.deliveredProjectIds.filter((id) => id !== projectId);
   delete state.projectRecipients[projectId];
+  delete state.projectSmsRecipients[projectId];
   delete state.projectCollaborators[projectId];
   state.projectAccessRows = state.projectAccessRows.filter((row) => row.projectId !== projectId);
   if (state.selectedProjectId === projectId) state.selectedProjectId = "";
@@ -1962,6 +2026,44 @@ async function emailProjectClient({ client, project, video, version, emails: exp
   return { ok: true, sent: results.length, results };
 }
 
+async function smsProjectClient({ project, video, version, emails: explicitEmails = null, smsType = "version" }) {
+  const emails = clientEmails(explicitEmails);
+  if (!emails.length) return { ok: true, sent: 0, results: [] };
+  if (!project) throw new Error("Open a project before sending SMS");
+
+  const token = await supabaseAccessToken();
+  if (!token) throw new Error("Sign in again before sending SMS.");
+
+  const reviewUrl = `${location.origin}${location.pathname}#review/${project.id}`;
+  const results = [];
+  for (const email of emails) {
+    const response = await fetch(apiUrl("/api/send-sms"), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        smsType,
+        clientEmail: email,
+        projectName: project.name,
+        videoTitle: video?.title || project.name,
+        versionLabel: version?.label || "Project invite",
+        versionNote:
+          version?.note ||
+          (smsType === "invite"
+            ? "A project was added to your Validate dashboard."
+            : "A new review version is ready."),
+        reviewUrl,
+      }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || `SMS could not be sent to ${email}`);
+    results.push({ email, id: result.id });
+  }
+  return { ok: true, sent: results.length, results };
+}
+
 async function replaceProjectAccessInSupabase(projectId) {
   const supabase = getSupabase();
   if (!supabase || !projectId) throw new Error("Could not save project access.");
@@ -1969,11 +2071,19 @@ async function replaceProjectAccessInSupabase(projectId) {
   const { error: deleteError } = await supabase.from("project_access").delete().eq("project_id", projectId);
   if (deleteError) throw new Error(`Project access cleanup failed: ${deleteError.message}`);
   if (!rows.length) return [];
-  const { data, error } = await supabase.from("project_access").upsert(rows).select("project_id,email");
+  let { data, error } = await supabase.from("project_access").upsert(rows).select("project_id,email,sms_enabled");
+  if (error?.message?.toLowerCase?.().includes("sms_enabled")) {
+    const fallback = await supabase
+      .from("project_access")
+      .upsert(rows.map(({ project_id, email }) => ({ project_id, email })))
+      .select("project_id,email");
+    data = fallback.data;
+    error = fallback.error;
+  }
   if (error) throw new Error(`Project access did not save: ${error.message}`);
   state.projectAccessRows = [
     ...state.projectAccessRows.filter((row) => row.projectId !== projectId),
-    ...rows.map((row) => ({ projectId: row.project_id, email: row.email })),
+    ...rows.map((row) => ({ projectId: row.project_id, email: row.email, smsEnabled: Boolean(row.sms_enabled) })),
   ];
   saveState();
   return data || rows;
@@ -2005,7 +2115,12 @@ async function shareProjectFromForm(form, button) {
   const project = activeProject();
   const projectId = String(form.get("projectId") || project?.id || "");
   const emails = clientEmails(form.get("shareClientEmails"));
+  const smsEmails = clientEmails(form.get("shareSmsEmails")).filter((email) => {
+    const account = accountForEmail(email);
+    return emails.includes(email) && canSendSmsToAccount(account);
+  });
   const previousEmails = projectRecipientEmails(project?.id);
+  const previousSmsEmails = projectSmsRecipientEmails(project?.id);
 
   if (!emails.length && !previousEmails.length) {
     throw new Error("Choose at least one client account before sharing");
@@ -2017,14 +2132,18 @@ async function shareProjectFromForm(form, button) {
 
   if (emails.length) {
     state.projectRecipients[project.id] = emails;
+    state.projectSmsRecipients[project.id] = smsEmails;
     if (!state.deliveredProjectIds.includes(project.id)) state.deliveredProjectIds.push(project.id);
   } else {
     delete state.projectRecipients[project.id];
+    delete state.projectSmsRecipients[project.id];
     state.deliveredProjectIds = state.deliveredProjectIds.filter((id) => id !== project.id);
   }
 
   const previousSet = new Set(previousEmails);
   const newlyAddedEmails = emails.filter((email) => !previousSet.has(email));
+  const previousSmsSet = new Set(previousSmsEmails);
+  const newlySmsEnabledEmails = smsEmails.filter((email) => !previousSmsSet.has(email));
 
   button.textContent = "Saving access...";
   await savePortalData();
@@ -2051,9 +2170,31 @@ async function shareProjectFromForm(form, button) {
     });
   }
 
+  let smsError = "";
+  if (newlySmsEnabledEmails.length) {
+    button.textContent = "Sending SMS...";
+    const video = projectVideos(project.id)[0];
+    try {
+      await smsProjectClient({
+        project,
+        video,
+        version: video ? latestVersion(video.id) : null,
+        emails: newlySmsEnabledEmails,
+        smsType: "invite",
+      });
+    } catch (error) {
+      smsError = error.message || "SMS could not be sent yet";
+    }
+  }
+
   state.activity.unshift(`Updated client access for ${project.name}`);
   await savePortalData();
-  return { selectedCount: emails.length, invitedCount: newlyAddedEmails.length };
+  return {
+    selectedCount: emails.length,
+    invitedCount: newlyAddedEmails.length,
+    smsCount: smsError ? 0 : newlySmsEnabledEmails.length,
+    smsError,
+  };
 }
 
 async function saveProjectAdminsFromForm(form, button) {
@@ -2106,9 +2247,38 @@ async function notifyProjectRecipients(button, targetEmails = null) {
       emails,
       emailType: "version",
     });
-    state.activity.unshift(`Notified ${emails.length} client account${emails.length === 1 ? "" : "s"} about ${version.label} for ${project.name}`);
+    const smsEmails = projectSmsRecipientEmails(project.id).filter((email) => {
+      const account = accountForEmail(email);
+      return emails.includes(email) && canSendSmsToAccount(account);
+    });
+    let smsSent = 0;
+    let smsError = "";
+    if (smsEmails.length) {
+      button.textContent = "Sending SMS...";
+      try {
+        const smsResult = await smsProjectClient({
+          project,
+          video,
+          version,
+          emails: smsEmails,
+          smsType: "version",
+        });
+        smsSent = smsResult.sent || smsEmails.length;
+      } catch (error) {
+        smsError = error.message || "SMS could not be sent yet";
+      }
+    }
+    state.activity.unshift(
+      `Notified ${emails.length} client account${emails.length === 1 ? "" : "s"} about ${version.label} for ${project.name}${
+        smsSent ? ` and sent ${smsSent} SMS` : ""
+      }`,
+    );
     await savePortalData();
-    showToast(`Sent to ${emails.length} client account${emails.length === 1 ? "" : "s"}`);
+    showToast(
+      smsError
+        ? `Email sent. SMS needs setup: ${smsError}`
+        : `Sent to ${emails.length} client account${emails.length === 1 ? "" : "s"}${smsSent ? ` / ${smsSent} SMS` : ""}`,
+    );
   } catch (error) {
     showToast(error.message || "Clients could not be notified");
   } finally {
@@ -3171,6 +3341,8 @@ function renderSettings() {
   document.querySelector("#openCreate").textContent = "New client";
   const isAdmin = state.session?.role === "admin";
   const avatarUrl = currentAvatarUrl();
+  const phoneNumber = state.session?.phoneNumber || "";
+  const smsEnabled = Boolean(phoneNumber && state.session?.smsOptIn && !state.session?.smsOptedOut);
   root.innerHTML = `
     <div class="settings-layout">
       <section class="panel settings-card profile-settings-card">
@@ -3202,6 +3374,28 @@ function renderSettings() {
           </label>
           <button class="primary-button" type="submit">Update password</button>
           <button class="ghost-button" type="button" id="sendPasswordReset">Email reset link</button>
+        </form>
+      </section>
+
+      <section class="panel settings-card">
+        <div class="settings-card-head">
+          <div>
+            <p class="eyebrow">Messaging</p>
+            <h3>SMS notifications</h3>
+          </div>
+          <span class="status-pill ${smsEnabled ? "approved" : ""}">${smsEnabled ? "Enabled" : "Optional"}</span>
+        </div>
+        <p class="muted">Add a phone number if you want project invites or update reminders by text.</p>
+        <form class="settings-form" id="smsSettingsForm">
+          <label>
+            Phone number
+            <input name="phoneNumber" type="tel" placeholder="+1 417 555 0199" value="${escapeHtml(phoneNumber)}" />
+          </label>
+          <label class="toggle-row">
+            <input name="smsOptIn" type="checkbox" value="yes" ${state.session?.smsOptIn ? "checked" : ""} />
+            <span>Allow SMS review notifications</span>
+          </label>
+          <button class="primary-button" type="submit">Save SMS settings</button>
         </form>
       </section>
 
@@ -3317,6 +3511,53 @@ async function saveProfileAvatar(avatarUrl) {
   }
 }
 
+async function saveProfileMessaging({ phoneNumber, smsOptIn }) {
+  const client = getSupabase();
+  if (!client || !state.session) throw new Error("Sign in again before updating SMS settings.");
+  const normalizedPhone = normalizePhone(phoneNumber);
+  const enabled = Boolean(smsOptIn && normalizedPhone);
+
+  const { error: updateError } = await client.auth.updateUser({
+    data: {
+      phone_number: normalizedPhone,
+      sms_opt_in: enabled,
+    },
+  });
+  if (updateError) throw updateError;
+
+  state.session.phoneNumber = normalizedPhone;
+  state.session.smsOptIn = enabled;
+  state.session.smsOptedOut = false;
+  if (state.clientAccount) {
+    state.clientAccount.phoneNumber = normalizedPhone;
+    state.clientAccount.smsOptIn = enabled;
+    state.clientAccount.smsOptedOut = false;
+  }
+  const ownAccount = accountForEmail(state.session.email);
+  if (ownAccount) {
+    ownAccount.phoneNumber = normalizedPhone;
+    ownAccount.smsOptIn = enabled;
+    ownAccount.smsOptedOut = false;
+  }
+  saveState();
+
+  const { data: userData } = await client.auth.getUser();
+  if (userData?.user?.id) {
+    const { error: profileError } = await client
+      .from("profiles")
+      .update({
+        phone_number: normalizedPhone || null,
+        sms_opt_in: enabled,
+        sms_opted_out: false,
+      })
+      .eq("id", userData.user.id);
+    const message = profileError?.message?.toLowerCase?.() || "";
+    if (profileError && !["phone_number", "sms_opt_in", "sms_opted_out"].some((field) => message.includes(field))) {
+      throw profileError;
+    }
+  }
+}
+
 async function generateInviteCode({ role, email }) {
   const token = await supabaseAccessToken();
   if (!token) throw new Error("Sign in again before generating an invite.");
@@ -3368,6 +3609,32 @@ function setupSettingsHandlers() {
       showToast("Password updated");
     } catch (error) {
       showToast(error.message || "Password did not update");
+    } finally {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
+  });
+
+  root.querySelector("#smsSettingsForm")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const button = form.querySelector("button[type='submit']");
+    const formData = new FormData(form);
+    const phoneNumber = normalizePhone(formData.get("phoneNumber"));
+    const smsOptIn = formData.get("smsOptIn") === "yes";
+    if (smsOptIn && !phoneNumber) {
+      showToast("Add a phone number or turn off SMS notifications");
+      return;
+    }
+    const originalText = button.textContent;
+    button.disabled = true;
+    button.textContent = "Saving...";
+    try {
+      await saveProfileMessaging({ phoneNumber, smsOptIn });
+      showToast(smsOptIn && phoneNumber ? "SMS notifications enabled" : "SMS notifications saved");
+      renderSettings();
+    } catch (error) {
+      showToast(error.message || "SMS settings did not save");
     } finally {
       button.disabled = false;
       button.textContent = originalText;
@@ -3439,19 +3706,27 @@ function setupSettingsHandlers() {
 function renderAccountOptions({
   accounts,
   selectedEmails,
+  selectedSmsEmails = new Set(),
   query = "",
   role = "client",
   hiddenId = "accountEmails",
+  smsHiddenId = "",
+  enableSms = false,
   emptyText = "No accounts found yet.",
 }) {
   const options = dialogFields.querySelector("#accountOptions");
   const hidden = dialogFields.querySelector(`#${hiddenId}`);
   const selectedCount = dialogFields.querySelector("#accountSelectedCount");
+  const smsHidden = smsHiddenId ? dialogFields.querySelector(`#${smsHiddenId}`) : null;
   if (!options || !hidden || !selectedCount) return;
 
   const selected = [...selectedEmails];
   hidden.value = selected.join(",");
-  selectedCount.textContent = selected.length ? `${selected.length} selected` : "No accounts selected";
+  if (smsHidden) smsHidden.value = [...selectedSmsEmails].join(",");
+  const smsCount = selectedSmsEmails.size;
+  selectedCount.textContent = selected.length
+    ? `${selected.length} selected${enableSms ? ` / ${smsCount} SMS` : ""}`
+    : `No accounts selected${enableSms && smsCount ? ` / ${smsCount} SMS` : ""}`;
 
   const searchTerm = query.trim().toLowerCase();
   const currentEmail = normalizeEmail(state.session?.email);
@@ -3487,19 +3762,43 @@ function renderAccountOptions({
     .map((account) => {
       const email = normalizeEmail(account.email);
       const checked = selectedEmails.has(email);
+      const smsChecked = selectedSmsEmails.has(email);
+      const smsEnabled = enableSms && canSendSmsToAccount(account);
+      const smsStatus = account.phoneNumber ? "SMS not enabled" : "Add phone to enable SMS";
       return `
-        <label class="account-option ${checked ? "is-selected" : ""}">
-          <input
-            type="checkbox"
-            value="${escapeHtml(email)}"
-            data-account-email="${escapeHtml(email)}"
-            ${checked ? "checked" : ""}
-          />
-          <span class="account-option-main">
-            <strong>${escapeHtml(account.fullName || account.email)}</strong>
-            <span>${escapeHtml(email)}</span>
-          </span>
-        </label>
+        <div class="account-option ${checked ? "is-selected" : ""}">
+          <label class="account-option-main">
+            <input
+              type="checkbox"
+              value="${escapeHtml(email)}"
+              data-account-email="${escapeHtml(email)}"
+              ${checked ? "checked" : ""}
+            />
+            <span>
+              <strong>${escapeHtml(account.fullName || account.email)}</strong>
+              <span>${escapeHtml(email)}</span>
+              ${
+                enableSms
+                  ? `<small>${smsEnabled ? `SMS ready / ${escapeHtml(account.phoneNumber)}` : smsStatus}</small>`
+                  : ""
+              }
+            </span>
+          </label>
+          ${
+            enableSms
+              ? `<label class="sms-option ${smsEnabled ? "" : "is-disabled"}">
+                  <input
+                    type="checkbox"
+                    value="${escapeHtml(email)}"
+                    data-sms-email="${escapeHtml(email)}"
+                    ${smsChecked ? "checked" : ""}
+                    ${smsEnabled ? "" : "disabled"}
+                  />
+                  <span>SMS</span>
+                </label>`
+              : ""
+          }
+        </div>
       `;
     })
     .join("");
@@ -3508,10 +3807,14 @@ function renderAccountOptions({
 function setupAccountPicker({
   role = "client",
   hiddenId = "accountEmails",
+  smsHiddenId = "",
+  enableSms = false,
   selected = [],
+  selectedSms = [],
   emptyText = "No accounts found yet.",
 } = {}) {
   const selectedEmails = new Set(clientEmails(selected));
+  const selectedSmsEmails = new Set(clientEmails(selectedSms));
   const search = dialogFields.querySelector("#accountSearch");
   const options = dialogFields.querySelector("#accountOptions");
 
@@ -3519,9 +3822,12 @@ function setupAccountPicker({
     renderAccountOptions({
       accounts: state.accountDirectory || [],
       selectedEmails,
+      selectedSmsEmails,
       query: search?.value || "",
       role,
       hiddenId,
+      smsHiddenId,
+      enableSms,
       emptyText,
     });
   };
@@ -3529,10 +3835,24 @@ function setupAccountPicker({
   search?.addEventListener("input", renderOptions);
   options?.addEventListener("change", (event) => {
     const checkbox = event.target.closest("[data-account-email]");
-    if (!checkbox) return;
-    const email = normalizeEmail(checkbox.dataset.accountEmail || checkbox.value);
-    if (checkbox.checked) selectedEmails.add(email);
-    else selectedEmails.delete(email);
+    const smsCheckbox = event.target.closest("[data-sms-email]");
+    if (checkbox) {
+      const email = normalizeEmail(checkbox.dataset.accountEmail || checkbox.value);
+      if (checkbox.checked) selectedEmails.add(email);
+      else {
+        selectedEmails.delete(email);
+        selectedSmsEmails.delete(email);
+      }
+    }
+    if (smsCheckbox) {
+      const email = normalizeEmail(smsCheckbox.dataset.smsEmail || smsCheckbox.value);
+      if (smsCheckbox.checked) {
+        selectedEmails.add(email);
+        selectedSmsEmails.add(email);
+      } else {
+        selectedSmsEmails.delete(email);
+      }
+    }
     renderOptions();
   });
 
@@ -3590,8 +3910,8 @@ function openProjectShareDialog() {
   dialogTitle.textContent = isShared ? "Project clients" : "Share project";
   dialogSubtitle.hidden = false;
   dialogSubtitle.textContent = isShared
-    ? "Add or remove client accounts for this project. Newly added clients will receive an invite email."
-    : "Choose the client accounts that should see this project. They will receive an invite email.";
+    ? "Add or remove client accounts for this project. Choose SMS only for clients who added a phone number."
+    : "Choose the client accounts that should see this project. Email is sent by default; SMS is optional.";
   createSubmit.textContent = isShared ? "Save clients" : "Send invite";
   createSubmit.disabled = false;
   document.querySelector("#cancelDialog").textContent = "Cancel";
@@ -3602,6 +3922,7 @@ function openProjectShareDialog() {
         <span id="accountSelectedCount">No accounts selected</span>
       </div>
       <input id="shareClientEmails" name="shareClientEmails" type="hidden" />
+      <input id="shareSmsEmails" name="shareSmsEmails" type="hidden" />
       <div class="account-box">
         <input id="accountSearch" type="search" placeholder="Search client accounts" autocomplete="off" />
         <div class="account-options" id="accountOptions">
@@ -3613,7 +3934,10 @@ function openProjectShareDialog() {
   setupAccountPicker({
     role: "client",
     hiddenId: "shareClientEmails",
+    smsHiddenId: "shareSmsEmails",
+    enableSms: true,
     selected: recipients,
+    selectedSms: projectSmsRecipientEmails(project.id),
     emptyText: "No client accounts found yet. Have the client create an account first.",
   });
   dialog.showModal();
@@ -3781,6 +4105,7 @@ async function handleCreateFormSubmit(event) {
     comments: structuredClone(state.comments),
     deliveredProjectIds: structuredClone(state.deliveredProjectIds),
     projectRecipients: structuredClone(state.projectRecipients),
+    projectSmsRecipients: structuredClone(state.projectSmsRecipients),
     projectCollaborators: structuredClone(state.projectCollaborators),
     projectAccessRows: structuredClone(state.projectAccessRows),
     selectedClientId: state.selectedClientId,
@@ -3799,11 +4124,11 @@ async function handleCreateFormSubmit(event) {
       dialog.close();
       createForm.reset();
       const shareMessage = shareResult.invitedCount
-        ? `Invited ${shareResult.invitedCount} new client${shareResult.invitedCount === 1 ? "" : "s"}`
+        ? `Invited ${shareResult.invitedCount} new client${shareResult.invitedCount === 1 ? "" : "s"}${shareResult.smsCount ? ` / ${shareResult.smsCount} SMS` : ""}`
         : shareResult.selectedCount
-          ? `Project access saved for ${shareResult.selectedCount} client${shareResult.selectedCount === 1 ? "" : "s"}`
+          ? `Project access saved for ${shareResult.selectedCount} client${shareResult.selectedCount === 1 ? "" : "s"}${shareResult.smsCount ? ` / ${shareResult.smsCount} SMS` : ""}`
           : "Project client access cleared";
-      showToast(shareMessage);
+      showToast(shareResult.smsError ? `${shareMessage}. SMS needs setup: ${shareResult.smsError}` : shareMessage);
       renderProjectDetail();
       return;
     }
@@ -3939,6 +4264,7 @@ async function handleCreateFormSubmit(event) {
     state.comments = previousData.comments;
     state.deliveredProjectIds = previousData.deliveredProjectIds;
     state.projectRecipients = previousData.projectRecipients;
+    state.projectSmsRecipients = previousData.projectSmsRecipients;
     state.projectCollaborators = previousData.projectCollaborators;
     state.projectAccessRows = previousData.projectAccessRows;
     state.selectedClientId = previousData.selectedClientId;
