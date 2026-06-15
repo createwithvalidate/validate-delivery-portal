@@ -95,6 +95,7 @@ const loginReelSources = [
   "https://createwithvalidate.com/videos/header-loop-2.mp4",
   "https://createwithvalidate.com/videos/fishing-loop.mp4",
 ];
+const reviewEventPrefix = "__validate_review_event__:";
 let supabaseClient = null;
 
 function apiUrl(path) {
@@ -867,16 +868,59 @@ async function insertCommentInSupabase(comment) {
   return result.comment;
 }
 
-async function saveApprovalInSupabase(version) {
-  const client = getSupabase();
-  if (!client) throw new Error("Supabase is not available yet.");
-  const { data: userData } = await client.auth.getUser();
-  if (!userData?.user) throw new Error("Sign in again before saving.");
-  const { error } = await client
-    .from("video_versions")
-    .update({ approved: Boolean(version.approved) })
-    .eq("id", version.id);
-  if (error) throw new Error(`Approval did not save: ${error.message}`);
+async function saveReviewStatusInSupabase({ versionId, type }) {
+  const token = await supabaseAccessToken();
+  if (!token) throw new Error("Sign in again before saving review status.");
+  const response = await fetch(apiUrl("/api/save-review-status"), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ versionId, type }),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || "Review status did not save.");
+  return result.comment;
+}
+
+async function saveClientReviewEvent({ version, type, silent = false }) {
+  if (!version || state.mode !== "client") return null;
+  const identity = currentReviewIdentity();
+  if (!identity.email) return null;
+  if (clientReviewEvent(version.id, type, identity.email)) return null;
+
+  const previousApproved = version.approved;
+  const optimisticComment = makeReviewEventComment({ versionId: version.id, type });
+  upsertById(state.comments, optimisticComment);
+  if (type === "approved") version.approved = true;
+  saveState();
+  refreshReviewStatusUi();
+
+  try {
+    const savedComment = await saveReviewStatusInSupabase({ versionId: version.id, type });
+    if (savedComment) upsertById(state.comments, savedComment);
+    if (type === "approved") version.approved = true;
+    saveState();
+    refreshReviewStatusUi();
+    return savedComment || optimisticComment;
+  } catch (error) {
+    state.comments = state.comments.filter((comment) => comment.id !== optimisticComment.id);
+    if (type === "approved") version.approved = previousApproved;
+    saveState();
+    refreshReviewStatusUi();
+    if (!silent) showToast(error.message);
+    return null;
+  }
+}
+
+function markVersionSeen(version) {
+  if (!version || state.mode !== "client") return;
+  const identity = currentReviewIdentity();
+  if (!identity.email || clientReviewEvent(version.id, "seen", identity.email)) return;
+  window.setTimeout(() => {
+    saveClientReviewEvent({ version, type: "seen", silent: true });
+  }, 500);
 }
 
 async function savePortalData() {
@@ -938,6 +982,7 @@ async function syncPortalData({ announce = false, rerender = true } = {}) {
     lastPortalFingerprint = nextFingerprint;
     saveState();
     if (rerender && hasChanged && !isWatchingReview) renderCurrentView();
+    if (rerender && hasChanged && isWatchingReview) refreshReviewStatusUi();
     if (announce) showToast("Synced");
     return true;
   } catch (error) {
@@ -1152,6 +1197,123 @@ function currentCommentAuthor(isAdmin) {
   if (isAdmin) return state.session?.email || "Validate";
   const account = activeClientAccount();
   return account?.contact || account?.name || state.clientAccount?.name || state.session?.email || "Client";
+}
+
+function reviewEventId(type, versionId, email) {
+  return `review-${type}-${slug(versionId).slice(0, 48)}-${slug(email).slice(0, 72)}`;
+}
+
+function parseReviewEvent(comment) {
+  const body = String(comment?.body || "");
+  if (!body.startsWith(reviewEventPrefix)) return null;
+  try {
+    const event = JSON.parse(body.slice(reviewEventPrefix.length));
+    if (!event?.type || !event?.email) return null;
+    return {
+      type: event.type,
+      email: normalizeEmail(event.email),
+      name: event.name || accountNameForEmail(event.email),
+      at: event.at || comment.createdAt || "Just now",
+    };
+  } catch {
+    return null;
+  }
+}
+
+function isReviewEvent(comment) {
+  return Boolean(parseReviewEvent(comment));
+}
+
+function visibleCommentsForVersion(versionId) {
+  return state.comments.filter((comment) => comment.versionId === versionId && !isReviewEvent(comment));
+}
+
+function reviewEventsForVersion(versionId) {
+  return state.comments
+    .filter((comment) => comment.versionId === versionId)
+    .map((comment) => ({ comment, event: parseReviewEvent(comment) }))
+    .filter((entry) => entry.event);
+}
+
+function currentReviewIdentity() {
+  const email = normalizeEmail(state.session?.email || state.clientAccount?.email || "");
+  return {
+    email,
+    name: currentCommentAuthor(false),
+  };
+}
+
+function makeReviewEventComment({ versionId, type }) {
+  const identity = currentReviewIdentity();
+  const at = new Date().toISOString();
+  return {
+    id: reviewEventId(type, versionId, identity.email),
+    versionId,
+    author: identity.name,
+    role: "client",
+    body: `${reviewEventPrefix}${JSON.stringify({
+      type,
+      email: identity.email,
+      name: identity.name,
+      at,
+    })}`,
+    createdAt: "Just now",
+  };
+}
+
+function clientReviewEvent(versionId, type, email = currentReviewIdentity().email) {
+  const normalizedEmail = normalizeEmail(email);
+  return reviewEventsForVersion(versionId).find(
+    ({ event }) => event.type === type && event.email === normalizedEmail,
+  )?.event;
+}
+
+function reviewStatusRows(version, project) {
+  if (!version || !project) return [];
+  const recipients = projectRecipientEmails(project.id);
+  const seenEvents = reviewEventsForVersion(version.id).filter(({ event }) => event.type === "seen");
+  const approvedEvents = reviewEventsForVersion(version.id).filter(({ event }) => event.type === "approved");
+  const emails = [
+    ...new Set([
+      ...recipients,
+      ...seenEvents.map(({ event }) => event.email),
+      ...approvedEvents.map(({ event }) => event.email),
+    ]),
+  ].filter(Boolean);
+
+  return emails.map((email) => {
+    const seen = seenEvents.find(({ event }) => event.email === email)?.event;
+    const approved = approvedEvents.find(({ event }) => event.email === email)?.event;
+    return {
+      email,
+      name: approved?.name || seen?.name || accountNameForEmail(email),
+      seenAt: seen?.at || "",
+      approvedAt: approved?.at || "",
+      seen: Boolean(seen),
+      approved: Boolean(approved),
+    };
+  });
+}
+
+function reviewSummaryForVersion(version, project) {
+  const rows = reviewStatusRows(version, project);
+  const seenCount = rows.filter((row) => row.seen).length;
+  const approvedCount = rows.filter((row) => row.approved).length;
+  return {
+    rows,
+    total: rows.length,
+    seenCount,
+    approvedCount,
+    hasApproval: Boolean(version?.approved || approvedCount),
+  };
+}
+
+function versionReviewLabel(version, project) {
+  const summary = reviewSummaryForVersion(version, project);
+  if (!summary.total) return version?.approved ? "approved" : "review";
+  if (summary.approvedCount) return `${summary.approvedCount}/${summary.total} approved`;
+  if (summary.seenCount) return `${summary.seenCount}/${summary.total} seen`;
+  return "not seen";
 }
 
 function setRoute(nextRoute) {
@@ -1378,7 +1540,7 @@ function renderVideoCardGrid({
           const versions = videoVersions(video.id);
           const version = versions[0];
           const noteCount = versions.reduce(
-            (total, item) => total + state.comments.filter((comment) => comment.versionId === item.id).length,
+            (total, item) => total + visibleCommentsForVersion(item.id).length,
             0,
           );
           const isDisabled = requireVersion && !versions.length;
@@ -2270,7 +2432,7 @@ function renderClientDashboard() {
                   const latest = versions[0];
                   const approvedCount = versions.filter((version) => version.approved).length;
                   const noteCount = versions.reduce(
-                    (total, version) => total + state.comments.filter((comment) => comment.versionId === version.id).length,
+                    (total, version) => total + visibleCommentsForVersion(version.id).length,
                     0,
                   );
                   return `
@@ -2402,6 +2564,102 @@ function renderClientReview() {
   renderReviewShell(false);
 }
 
+function formatReviewEventTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value || "";
+  return date.toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function renderReviewStatusContent(version, project) {
+  const summary = reviewSummaryForVersion(version, project);
+  if (!summary.rows.length) {
+    return `
+      <div class="empty compact-empty">
+        Share this project with clients to track views and approvals.
+      </div>
+    `;
+  }
+
+  return `
+    <div class="review-status-list">
+      ${summary.rows
+        .map(
+          (row) => `
+            <div class="review-status-row">
+              <div>
+                <strong>${escapeHtml(row.name)}</strong>
+                <span>${escapeHtml(row.email)}</span>
+              </div>
+              <div class="review-status-flags">
+                <span class="${row.seen ? "status-dot ready" : "status-dot"}">
+                  ${row.seen ? "Seen" : "Not seen"}
+                </span>
+                <span class="${row.approved ? "status-dot approved" : "status-dot"}">
+                  ${row.approved ? "Approved" : "Not approved"}
+                </span>
+              </div>
+              <small>
+                ${
+                  row.approvedAt
+                    ? `Approved ${escapeHtml(formatReviewEventTime(row.approvedAt))}`
+                    : row.seenAt
+                      ? `Seen ${escapeHtml(formatReviewEventTime(row.seenAt))}`
+                      : "Waiting for client"
+                }
+              </small>
+            </div>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function renderClientReviewStatus(version) {
+  const seen = clientReviewEvent(version?.id, "seen");
+  const approved = clientReviewEvent(version?.id, "approved");
+  return `
+    <div class="client-review-status">
+      <span class="${seen ? "status-dot ready" : "status-dot"}">${seen ? "Seen" : "Not seen"}</span>
+      <span class="${approved ? "status-dot approved" : "status-dot"}">${approved ? "Approved" : "Awaiting approval"}</span>
+    </div>
+  `;
+}
+
+function refreshReviewStatusUi() {
+  if (!(currentView === "adminReview" || currentView === "clientReview")) return;
+  const video = activeVideo();
+  const project = state.projects.find((item) => item.id === video?.projectId);
+  const version = state.versions.find((item) => item.id === state.selectedVersionId) || latestVersion(video?.id);
+  if (!version || !project) return;
+
+  const summary = reviewSummaryForVersion(version, project);
+  const statusMount = document.querySelector("#reviewStatusMount");
+  if (statusMount) statusMount.innerHTML = renderReviewStatusContent(version, project);
+
+  const statusCount = document.querySelector("#reviewStatusCount");
+  if (statusCount) {
+    statusCount.textContent = summary.total
+      ? `${summary.approvedCount}/${summary.total} approved`
+      : "No clients yet";
+  }
+
+  const clientStatus = document.querySelector("#clientReviewStatus");
+  if (clientStatus) clientStatus.innerHTML = renderClientReviewStatus(version);
+
+  const approveButton = document.querySelector("#approveVersion");
+  const isApprovedByClient = Boolean(clientReviewEvent(version.id, "approved"));
+  if (approveButton) {
+    approveButton.textContent = isApprovedByClient ? "Approved" : "Approve this version";
+    approveButton.disabled = isApprovedByClient;
+  }
+}
+
 function renderReviewShell(isAdmin) {
   rememberView(isAdmin ? "adminReview" : "clientReview");
   dashboardHero.hidden = true;
@@ -2433,7 +2691,9 @@ function renderReviewShell(isAdmin) {
     saveState();
   }
   const version = versions.find((item) => item.id === state.selectedVersionId) || newestVersion;
-  const comments = state.comments.filter((comment) => comment.versionId === version?.id);
+  const comments = visibleCommentsForVersion(version?.id);
+  const summary = reviewSummaryForVersion(version, project);
+  const clientApproved = Boolean(clientReviewEvent(version?.id, "approved"));
   setPageHeader(isAdmin ? video.title : project.name, isAdmin ? project?.name || "Video review" : "Project review");
   document.querySelector("#openCreate").hidden = true;
   createIntent = isAdmin ? "version" : "approve";
@@ -2458,7 +2718,7 @@ function renderReviewShell(isAdmin) {
             version
               ? `<div class="inline-actions">
                   <span class="provider-pill">${version.provider || "Video"}</span>
-                  <span class="status-pill ${version.approved ? "approved" : ""}">${version.approved ? "approved" : "in review"}</span>
+                  <span class="status-pill ${summary.hasApproval ? "approved" : ""}">${escapeHtml(versionReviewLabel(version, project))}</span>
                 </div>`
               : ""
           }
@@ -2495,7 +2755,7 @@ function renderReviewShell(isAdmin) {
                                   <strong>${item.label}</strong>
                                   <small>${item.createdAt}</small>
                                 </span>
-                                <span class="status-pill ${item.approved ? "approved" : ""}">${item.approved ? "approved" : "review"}</span>
+                                <span class="status-pill ${reviewSummaryForVersion(item, project).hasApproval ? "approved" : ""}">${escapeHtml(versionReviewLabel(item, project))}</span>
                               </button>
                             `,
                           )
@@ -2507,7 +2767,23 @@ function renderReviewShell(isAdmin) {
             `
             : `<div class="empty compact-empty">No versions yet.</div>`
         }
-        ${version ? `<button class="${isAdmin ? "ghost-button" : "primary-button"}" id="approveVersion">${version.approved ? "Approved" : "Mark approved"}</button>` : ""}
+        ${
+          version && isAdmin
+            ? `<button class="ghost-button review-status-toggle" id="reviewStatusToggle" type="button" aria-expanded="false">
+                <span>Review status</span>
+                <span id="reviewStatusCount">${summary.total ? `${summary.approvedCount}/${summary.total} approved` : "No clients yet"}</span>
+              </button>
+              <div class="review-status-panel" id="reviewStatusPanel" hidden>
+                <div id="reviewStatusMount">${renderReviewStatusContent(version, project)}</div>
+              </div>`
+            : ""
+        }
+        ${
+          version && !isAdmin
+            ? `<button class="primary-button" id="approveVersion" ${clientApproved ? "disabled" : ""}>${clientApproved ? "Approved" : "Approve this version"}</button>
+              <div id="clientReviewStatus">${renderClientReviewStatus(version)}</div>`
+            : ""
+        }
         ${isAdmin ? `<button class="ghost-button" id="backProject">Back to project</button>` : `<button class="ghost-button" id="backClientProject">Back to project</button>`}
         ${
           version
@@ -2519,11 +2795,11 @@ function renderReviewShell(isAdmin) {
                         .map(
                           (comment) => `
                             <div class="comment-row">
-                              <div class="avatar">${comment.author.slice(0, 1)}</div>
+                              <div class="avatar">${escapeHtml(comment.author.slice(0, 1))}</div>
                               <div>
-                                <strong>${comment.author}</strong>
-                                <span class="muted"> ${comment.createdAt}</span>
-                                <p>${comment.body}</p>
+                                <strong>${escapeHtml(comment.author)}</strong>
+                                <span class="muted"> ${escapeHtml(comment.createdAt)}</span>
+                                <p>${escapeHtml(comment.body)}</p>
                               </div>
                             </div>
                           `,
@@ -2561,6 +2837,16 @@ function renderReviewShell(isAdmin) {
 
   root.querySelector("#addReviewVersion")?.addEventListener("click", () => openDialog("version"));
 
+  root.querySelector("#reviewStatusToggle")?.addEventListener("click", () => {
+    const panel = root.querySelector("#reviewStatusPanel");
+    const toggle = root.querySelector("#reviewStatusToggle");
+    if (!panel || !toggle) return;
+    const shouldOpen = panel.hidden;
+    panel.hidden = !shouldOpen;
+    toggle.setAttribute("aria-expanded", String(shouldOpen));
+    refreshReviewStatusUi();
+  });
+
   root.querySelector("#commentForm")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const body = new FormData(event.currentTarget).get("body").trim();
@@ -2590,25 +2876,11 @@ function renderReviewShell(isAdmin) {
   });
 
   root.querySelector("#approveVersion")?.addEventListener("click", async () => {
-    if (!version) return;
-    const wasApproved = version.approved;
-    const previousStatus = video.status;
-    version.approved = true;
-    video.status = "approved";
-    try {
-      if (isAdmin) await savePortalData();
-      else {
-        saveState();
-        await saveApprovalInSupabase(version);
-      }
+    if (!version || isAdmin || clientReviewEvent(version.id, "approved")) return;
+    const saved = await saveClientReviewEvent({ version, type: "approved" });
+    if (saved) {
       showToast("Version marked approved");
-      renderReviewShell(isAdmin);
-    } catch (error) {
-      version.approved = wasApproved;
-      video.status = previousStatus;
-      saveState();
-      showToast(error.message);
-      renderReviewShell(isAdmin);
+      renderReviewShell(false);
     }
   });
 
@@ -2616,6 +2888,7 @@ function renderReviewShell(isAdmin) {
   if (back) back.addEventListener("click", renderProjectDetail);
   const backClientProject = root.querySelector("#backClientProject");
   if (backClientProject) backClientProject.addEventListener("click", renderClientProject);
+  if (!isAdmin && version) markVersionSeen(version);
 }
 
 function renderActivity() {
@@ -2916,11 +3189,7 @@ function openDialog(intent = createIntent) {
   };
 
   if (intent === "approve") {
-    const version = latestVersion();
-    if (version) version.approved = true;
-    saveState();
-    showToast("Version marked approved");
-    render();
+    showToast("Open a version to approve it.");
     return;
   }
 
