@@ -1838,6 +1838,17 @@ async function createBunnyUploadCredentials({ title }) {
   return result;
 }
 
+async function createVimeoUploadCredentials({ title, size }) {
+  const response = await fetch(apiUrl("/api/create-vimeo-upload"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title, size }),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || "Vimeo upload could not start");
+  return result;
+}
+
 function loadTusClient() {
   if (window.tus?.Upload) return Promise.resolve(window.tus);
   if (window.tusClient?.Upload) return Promise.resolve(window.tusClient);
@@ -1854,6 +1865,39 @@ function loadTusClient() {
     };
     script.onerror = () => reject(new Error("Video uploader could not load"));
     if (!existingScript) document.head.append(script);
+  });
+}
+
+async function uploadToVimeo(file, credentials, onProgress) {
+  const tusClient = await loadTusClient();
+  if (!tusClient?.Upload) {
+    throw new Error("Video uploader is still loading. Try again in a moment.");
+  }
+
+  return new Promise((resolve, reject) => {
+    const formatUploadError = (error) => {
+      const status = error?.originalResponse?.getStatus?.();
+      const body = error?.originalResponse?.getBody?.();
+      const detail = [status ? `status ${status}` : "", body].filter(Boolean).join(": ");
+      return new Error(detail ? `Vimeo upload failed (${detail})` : error?.message || "Vimeo upload failed");
+    };
+
+    const upload = new tusClient.Upload(file, {
+      uploadUrl: credentials.uploadLink,
+      retryDelays: [0, 3000, 5000, 10000, 20000, 60000, 60000],
+      removeFingerprintOnSuccess: true,
+      headers: {
+        Accept: "application/vnd.vimeo.*+json;version=3.4",
+      },
+      onError: (error) => reject(formatUploadError(error)),
+      onProgress: (bytesUploaded, bytesTotal) => {
+        const percent = bytesTotal ? Math.round((bytesUploaded / bytesTotal) * 100) : 0;
+        onProgress(percent);
+      },
+      onSuccess: () => resolve(credentials),
+    });
+
+    upload.start();
   });
 }
 
@@ -1918,6 +1962,32 @@ async function uploadVersionFileToBunny({ file, title, button }) {
     throw new Error(`Bunny upload failed: ${error.message}`);
   }
   return credentials;
+}
+
+async function uploadVersionFileToVimeo({ file, title, button }) {
+  button.textContent = "Creating Vimeo video...";
+  let credentials;
+  try {
+    credentials = await createVimeoUploadCredentials({ title, size: file.size });
+  } catch (error) {
+    throw new Error(`Could not create Vimeo video: ${error.message}`);
+  }
+  credentials.title = title;
+  button.textContent = "Uploading 0%";
+  try {
+    await uploadToVimeo(file, credentials, (percent) => {
+      button.textContent = `Uploading ${percent}%`;
+    });
+  } catch (error) {
+    throw new Error(`Vimeo upload failed: ${error.message}`);
+  }
+  return credentials;
+}
+
+async function uploadVersionFile({ provider, file, title, button }) {
+  return provider === "Vimeo"
+    ? uploadVersionFileToVimeo({ file, title, button })
+    : uploadVersionFileToBunny({ file, title, button });
 }
 
 function render() {
@@ -2850,7 +2920,7 @@ function openDialog(intent = createIntent) {
     ],
     version: [
       ["label", "Version label", "Version 4"],
-      ["provider", "Provider", "Bunny Stream"],
+      ["provider", "Provider", "Bunny Stream", "select"],
       ["file", "Video file", ""],
       ["note", "Version note", "Updated music and end card."],
     ],
@@ -2908,12 +2978,17 @@ function openDialog(intent = createIntent) {
 
   dialogFields.innerHTML = fields[intent]
     .map(
-      ([name, label, placeholder]) => `
+      ([name, label, placeholder, type]) => `
         <label>
           ${label}
           ${
             name === "note" || name === "summary" || name === "description"
               ? `<textarea name="${name}" placeholder="${placeholder}"></textarea>`
+              : type === "select" && name === "provider"
+                ? `<select name="${name}">
+                    <option value="Bunny Stream">Bunny</option>
+                    <option value="Vimeo">Vimeo</option>
+                  </select>`
               : name === "file"
                 ? `<input name="${name}" type="file" accept="video/*" />`
                 : name === "imageUrl"
@@ -3054,13 +3129,14 @@ async function handleCreateFormSubmit(event) {
       }
 
       if (file?.size) {
-        const upload = await uploadVersionFileToBunny({
+        const upload = await uploadVersionFile({
+          provider,
           file,
           title: `${video.title} - ${label}`,
           button: saveButton,
         });
         embedUrl = upload.embedUrl;
-        bunnyVideoId = upload.videoId;
+        bunnyVideoId = provider === "Bunny Stream" ? upload.videoId : "";
       }
 
       const version = {
