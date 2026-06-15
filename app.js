@@ -2764,8 +2764,10 @@ function renderClientDashboard() {
                   const versions = videos.flatMap((video) => videoVersions(video.id));
                   const latest = versions[0];
                   const approvedCount = versions.filter((version) => version.approved).length;
+                  const hasUnseenLatest = Boolean(latest && !clientReviewEvent(latest.id, "seen"));
                   return `
-                    <article class="card client-project-card">
+                    <article class="card client-project-card ${hasUnseenLatest ? "has-unseen-latest" : ""}">
+                      ${hasUnseenLatest ? `<span class="new-project-dot" aria-label="New update"></span>` : ""}
                       <p class="eyebrow">${project.status}</p>
                       <h3>${project.name}</h3>
                       <p>${project.description || "Review files and notes for this project."}</p>
