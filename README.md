@@ -1,100 +1,41 @@
 # Validate Delivery Portal
 
-A first-pass client delivery portal for Validate video review, comments, approvals, version history, and future Vimeo/Bunny upload integrations.
+A client delivery portal for Validate video review, file delivery, notes, approvals, version history, and client notifications.
 
-## What is built
+## Current Features
 
-- Admin client dashboard
-- Client project list
-- Project detail view
-- Video review page
-- Version history
-- Comment thread
-- Approval action
-- Client preview mode
-- Create client/project/video/version flows
-- Resend-ready client email notifications
-- Bunny Stream upload handshake for browser video uploads
-- Static Vercel deployment config
+- Supabase-backed admin and client accounts
+- Admin client dashboard with client workspaces
+- Client projects with videos, images, and review access
+- Project sharing to selected client accounts
+- Email invites and update notifications through Resend
+- Direct video uploads through Bunny Stream or Vimeo
+- Automatic Bunny collections and Vimeo folders by project name
+- Version history with latest-version review by default
+- Client notes and admin notes on each version
+- Per-client seen and approval tracking
+- Admin reminder notices when shared clients have not opened the latest version
+- Vimeo thumbnail support through a server-side thumbnail route
 
-Portal accounts and delivery data are stored in Supabase once `schema.sql` has been run. Browser storage is only used to remember UI state between refreshes.
+## Local Preview
 
-## Local preview
-
-Because this is a static prototype, you can open `index.html` directly in a browser.
-
-For a local server:
+Run a local static server:
 
 ```sh
 python3 -m http.server 3000
 ```
 
-Then open `http://localhost:3000`.
-
-## Replace the logo
-
-Place the real Validate logo at:
+Then open:
 
 ```txt
-assets/validate-logo.png
+http://localhost:3000
 ```
 
-That file is used in both the login screen and the sidebar. PNG, SVG, or WebP will work, but if you use another format, update the two `assets/validate-logo.png` references in `index.html`.
+Local browser previews call the production API routes for server actions, so Vercel environment variables still control uploads, email, and private Supabase helpers.
 
-## Deploy to GitHub and Vercel
+## Accounts And Data
 
-1. Create a new GitHub repo.
-2. Push this folder to that repo.
-3. Import the repo in Vercel.
-4. Use the default static project settings.
-5. Add the Resend environment variables in Vercel before testing email.
-
-Vercel will serve `index.html` at the project root.
-
-## Resend email setup
-
-The `Send latest to client` button posts to:
-
-```txt
-/api/send-review-email
-```
-
-That serverless function sends through Resend and keeps the API key out of the browser.
-
-In Resend:
-
-1. Go to `https://resend.com/domains`.
-2. Add and verify the sending domain you want to use.
-3. Create an API key.
-
-In Vercel, add:
-
-```txt
-RESEND_API_KEY=re_...
-PORTAL_FROM_EMAIL=Validate <delivery@your-verified-domain.com>
-PORTAL_REPLY_TO_EMAIL=your-reply-address@your-verified-domain.com
-```
-
-`PORTAL_FROM_EMAIL` must use a domain that is verified in Resend.
-
-## Bunny Stream setup
-
-The `Upload new version` form can upload a selected video file to Bunny Stream.
-
-The browser asks `/api/create-bunny-upload` for temporary upload credentials, then uploads directly to Bunny's TUS endpoint. This keeps the Bunny Stream API key out of client-side code and avoids pushing large video files through Vercel.
-
-In Vercel, add:
-
-```txt
-BUNNY_STREAM_API_KEY=
-BUNNY_STREAM_LIBRARY_ID=
-```
-
-`BUNNY_STREAM_API_KEY` is the API key from the specific Bunny Stream video library. `BUNNY_STREAM_LIBRARY_ID` is the numeric Video Library ID from that same Bunny Stream library.
-
-## Backend upgrade path
-
-## Supabase beta setup
+Accounts and portal data live in Supabase. Browser storage only remembers UI state between refreshes.
 
 Supabase project:
 
@@ -102,58 +43,27 @@ Supabase project:
 https://axvnifoamejuxxqhezwr.supabase.co
 ```
 
-Signup rule:
-
-```txt
-Invite-only
-```
-
-First admin email:
-
-```txt
-henry@createwithvalidate.com
-```
-
-To turn on persistent accounts/data:
-
-1. Open Supabase.
-2. Go to `SQL Editor`.
-3. Paste and run `schema.sql`.
-4. Create an account on the portal using:
-   - Email: `henry@createwithvalidate.com`
-   - Invite code: `VALIDATE-ADMIN-BETA`
-5. After sign in, Supabase will mark that profile as `admin`.
+Run `schema.sql` in the Supabase SQL Editor to create the required tables, RLS policies, and invite-code signup flow.
 
 Reusable beta invite codes:
 
 - Admin accounts: `VALIDATE-ADMIN-BETA`
 - Client accounts: `VALIDATE-CLIENT-BETA`
 
-The login screen now supports:
+First admin account:
 
-- Sign in
-- Create account from invite
-- Admin/client mode toggle
+```txt
+henry@createwithvalidate.com
+```
 
-Important beta note:
+## Environment Variables
 
-- If `schema.sql` has not been run yet, real account/data persistence will fail loudly instead of silently saving only in the browser.
-- After `schema.sql` is run and users sign in with Supabase, admin-created clients/projects/videos/versions and client comments/approvals sync to Supabase.
-- Project names can repeat safely because new records now get unique IDs.
-
-The next production pass should finish:
-
-- Admin invite-code management UI
-- Admin invite sending through Resend
-- Password reset
-- Client-only RLS verification tests
-
-Recommended environment variables:
+Set these in Vercel Production:
 
 ```txt
 SUPABASE_URL=
 SUPABASE_PUBLISHABLE_KEY=
-SUPABASE_SERVICE_ROLE_KEY=server_only_service_role_or_secret_key
+SUPABASE_SERVICE_ROLE_KEY=
 BUNNY_STREAM_LIBRARY_ID=
 BUNNY_STREAM_API_KEY=
 VIMEO_ACCESS_TOKEN=
@@ -161,3 +71,58 @@ RESEND_API_KEY=
 PORTAL_FROM_EMAIL=
 PORTAL_REPLY_TO_EMAIL=
 ```
+
+`SUPABASE_SERVICE_ROLE_KEY`, `BUNNY_STREAM_API_KEY`, `VIMEO_ACCESS_TOKEN`, and `RESEND_API_KEY` must stay server-side only.
+
+## Email
+
+Client invites and update notices are sent by:
+
+```txt
+/api/send-review-email
+```
+
+`PORTAL_FROM_EMAIL` must use a verified Resend sending domain. The client email button links back into the portal review route for that project.
+
+## Upload Providers
+
+### Bunny Stream
+
+The browser asks:
+
+```txt
+/api/create-bunny-upload
+```
+
+The server creates or reuses a Bunny Stream collection named after the project, creates the video, returns temporary TUS credentials, and the browser uploads directly to Bunny.
+
+### Vimeo
+
+The browser asks:
+
+```txt
+/api/create-vimeo-upload
+```
+
+The server creates or reuses a Vimeo folder named after the project, creates a private Vimeo upload, returns the TUS upload link, and the browser uploads directly to Vimeo.
+
+## Deploy
+
+Push changes to GitHub, then deploy production with Vercel:
+
+```sh
+.tools/vercel-cli/node_modules/.bin/vercel --prod --yes
+```
+
+Production URL:
+
+```txt
+https://validate-delivery-portal.vercel.app
+```
+
+## Beta Notes
+
+- Clients only see projects shared with their account.
+- Admins can share projects, notify all clients, or send reminders only to clients who have not opened the latest version.
+- Vimeo private videos may require Vimeo-side access permissions depending on account settings.
+- Password reset and admin invite-code management are still future production hardening items.
