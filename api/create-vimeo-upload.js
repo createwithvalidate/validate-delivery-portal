@@ -137,6 +137,10 @@ module.exports = async function handler(request, response) {
     body: JSON.stringify({
       name: title,
       ...(folder?.uri ? { folder_uri: folder.uri } : {}),
+      privacy: {
+        // Hide from Vimeo keeps uploads private from Vimeo.com while preserving portal playback.
+        view: "disable",
+      },
       upload: {
         approach: "tus",
         size: String(size),
