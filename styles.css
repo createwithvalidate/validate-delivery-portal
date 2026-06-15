@@ -51,6 +51,18 @@ button:disabled {
   transform: none !important;
 }
 
+@keyframes surfaceIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .login-screen {
   position: relative;
   isolation: isolate;
@@ -917,6 +929,7 @@ button:disabled {
 .card {
   min-height: 176px;
   padding: 16px;
+  animation: surfaceIn 240ms ease both;
   transition:
     border-color 160ms ease,
     background 160ms ease,
@@ -926,6 +939,7 @@ button:disabled {
 .card:hover {
   border-color: var(--line-strong);
   background: rgba(18, 18, 20, 0.94);
+  transform: translateY(-2px);
 }
 
 .card h3,
@@ -1161,6 +1175,7 @@ button:disabled {
   cursor: pointer;
   font: inherit;
   text-align: left;
+  animation: surfaceIn 220ms ease both;
   transition:
     border-color 160ms ease,
     background 160ms ease,
@@ -1908,6 +1923,27 @@ button:disabled {
 .action-status.ready {
   border-color: rgba(255, 255, 255, 0.18);
   background: rgba(255, 255, 255, 0.055);
+}
+
+.delivery-notice {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.045);
+  animation: surfaceIn 220ms ease both;
+}
+
+.delivery-notice strong {
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.delivery-notice span {
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.45;
 }
 
 .comment-row {

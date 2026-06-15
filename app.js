@@ -1316,6 +1316,32 @@ function versionReviewLabel(version, project) {
   return "not seen";
 }
 
+function latestProjectReviewStatus(project) {
+  const { video, version } = latestProjectVersion(project?.id);
+  const summary = reviewSummaryForVersion(version, project);
+  const unopened = summary.rows.filter((row) => !row.seen);
+  return {
+    video,
+    version,
+    summary,
+    unopened,
+    unopenedEmails: unopened.map((row) => row.email),
+  };
+}
+
+function renderUnopenedNotice(status) {
+  if (!status?.version || !status.unopened.length) return "";
+  const names = status.unopened.map((row) => row.name || row.email);
+  const visibleNames = names.slice(0, 3).join(", ");
+  const extraCount = names.length > 3 ? ` +${names.length - 3} more` : "";
+  return `
+    <div class="delivery-notice">
+      <strong>${status.unopened.length} client${status.unopened.length === 1 ? "" : "s"} not opened</strong>
+      <span>${escapeHtml(visibleNames)}${extraCount} ${status.unopened.length === 1 ? "has" : "have"} not opened ${escapeHtml(status.version.label)} yet.</span>
+    </div>
+  `;
+}
+
 function setRoute(nextRoute) {
   route = nextRoute;
   state.route = nextRoute;
@@ -1761,11 +1787,11 @@ function setHeroMode(mode, projects = []) {
   dashboardHero.hidden = false;
   dashboardHero.classList.toggle("client-hero", isClient);
   dashboardHero.classList.toggle("admin-hero", !isClient);
-  heroEyebrow.textContent = isClient ? "Client review" : "Delivery control";
-  heroHeadline.textContent = isClient ? "Projects ready for review." : "Everything in motion.";
+  heroEyebrow.textContent = isClient ? "Client review" : "Delivery workspace";
+  heroHeadline.textContent = isClient ? "Ready for review." : "Review work, delivered clearly.";
   heroSubcopy.textContent = isClient
-    ? "Open a project, review the latest version, and keep every comment in one place."
-    : "Manage clients, project invites, video versions, and approvals without the noise.";
+    ? "Open a project, review the latest version, leave notes, and approve final cuts."
+    : "Manage clients, files, review links, comments, and approvals from one focused workspace.";
   document.querySelector("#heroClientCount").textContent = isClient
     ? `${projects.length} projects`
     : `${state.clients.length} clients`;
@@ -1936,9 +1962,9 @@ async function saveProjectAdminsFromForm(form, button) {
   return emails.length;
 }
 
-async function notifyProjectRecipients(button) {
+async function notifyProjectRecipients(button, targetEmails = null) {
   const project = activeProject();
-  const emails = projectRecipientEmails(project?.id);
+  const emails = clientEmails(targetEmails || projectRecipientEmails(project?.id));
   if (!project || !emails.length) {
     showToast("Share this project with clients first");
     return;
@@ -1952,7 +1978,7 @@ async function notifyProjectRecipients(button) {
 
   const originalText = button.textContent;
   button.disabled = true;
-  button.textContent = "Notifying clients...";
+  button.textContent = emails.length === projectRecipientEmails(project.id).length ? "Notifying clients..." : "Sending reminder...";
 
   try {
     await emailProjectClient({
@@ -1969,7 +1995,7 @@ async function notifyProjectRecipients(button) {
     });
     state.activity.unshift(`Notified ${emails.length} client account${emails.length === 1 ? "" : "s"} about ${version.label} for ${project.name}`);
     await savePortalData();
-    showToast(`Update sent to ${emails.length} client account${emails.length === 1 ? "" : "s"}`);
+    showToast(`Sent to ${emails.length} client account${emails.length === 1 ? "" : "s"}`);
   } catch (error) {
     showToast(error.message || "Clients could not be notified");
   } finally {
@@ -2152,7 +2178,7 @@ function render() {
     document.querySelector("#openCreate").hidden = true;
     root.innerHTML = `
       <div class="empty">
-        Loading saved workspace...
+        Loading workspace...
         <div class="modal-actions inline-retry">
           <button class="ghost-button" type="button" id="retryWorkspaceLoad">Retry</button>
         </div>
@@ -2177,7 +2203,7 @@ function renderClients() {
   if (!state.clients.length) {
     root.innerHTML = `
       <div class="empty">
-        No clients yet. Create your first client to start building a delivery workspace.
+        No clients yet. Create a client workspace to start.
       </div>
     `;
     return;
@@ -2197,7 +2223,7 @@ function renderClients() {
               <div class="card-footer">
                 <span class="metric">${activeProjects.length} projects</span>
                 <div class="inline-actions">
-                  <button class="ghost-button" data-client="${client.id}">Open workspace</button>
+                  <button class="ghost-button" data-client="${client.id}">Open</button>
                 </div>
               </div>
             </article>
@@ -2278,7 +2304,7 @@ function renderProjects() {
                   },
                 )
                 .join("")
-            : `<div class="empty project-empty">No active projects yet. Create a project when a new cut is ready for review.</div>`
+            : `<div class="empty project-empty">No projects yet. Create a project when a cut is ready for review.</div>`
         }
       </div>
     </section>
@@ -2308,9 +2334,16 @@ function renderProjectDetail() {
   const images = projectImages(project.id);
   const recipients = projectRecipientEmails(project.id);
   const isShared = recipients.length > 0;
-  const sendStatus = isShared
-    ? `${recipients.length} client account${recipients.length === 1 ? "" : "s"} will receive update notices.`
-    : "No clients have access yet. Share this project when it is ready.";
+  const latestStatus = latestProjectReviewStatus(project);
+  const unopenedEmails = latestStatus.unopenedEmails;
+  const sendStatus = !isShared
+    ? "Share this project when the first review is ready."
+    : !latestStatus.version
+      ? `${recipients.length} client account${recipients.length === 1 ? "" : "s"} ${recipients.length === 1 ? "has" : "have"} access.`
+      : unopenedEmails.length
+        ? `${unopenedEmails.length} client${unopenedEmails.length === 1 ? "" : "s"} still ${unopenedEmails.length === 1 ? "has" : "have"} not opened the latest version.`
+        : "All shared clients have opened the latest version.";
+  const deliveryButtonLabel = !isShared ? "Share project" : unopenedEmails.length ? "Send reminder" : "Notify clients";
   setPageHeader(project.name);
   document.querySelector("#openCreate").textContent = "Add video";
   document.querySelector("#openCreate").hidden = state.session?.role !== "admin";
@@ -2354,8 +2387,9 @@ function renderProjectDetail() {
       </section>
       <aside class="panel stack action-panel">
         <p class="eyebrow">Delivery</p>
-        <button class="primary-button" id="deliveryPrimary">${isShared ? "Notify clients of latest update" : "Share project"}</button>
+        <button class="primary-button" id="deliveryPrimary">${deliveryButtonLabel}</button>
         <p class="muted">${sendStatus}</p>
+        ${isShared ? renderUnopenedNotice(latestStatus) : ""}
         <div class="access-block">
           <div class="access-block-head">
             <span>Clients in project</span>
@@ -2376,7 +2410,7 @@ function renderProjectDetail() {
     });
   });
   root.querySelector("#deliveryPrimary").addEventListener("click", (event) => {
-    if (isShared) notifyProjectRecipients(event.currentTarget);
+    if (isShared) notifyProjectRecipients(event.currentTarget, unopenedEmails.length ? unopenedEmails : null);
     else openProjectShareDialog();
   });
   root.querySelector("#manageClients").addEventListener("click", () => {
@@ -2405,13 +2439,6 @@ function renderClientDashboard() {
   const deliveredProjectIds = new Set(state.deliveredProjectIds);
   const projects = state.projects.filter((project) => !project.archived && deliveredProjectIds.has(project.id));
   setHeroMode("client", projects);
-  const meta = state.portalMeta || {};
-  const loadDetails = [
-    `Signed in as ${accountEmail}`,
-    Number.isFinite(meta.accessCount) ? `${meta.accessCount} invite${meta.accessCount === 1 ? "" : "s"} found` : "",
-    Number.isFinite(meta.projectCount) ? `${meta.projectCount} project${meta.projectCount === 1 ? "" : "s"} loaded` : "",
-    meta.usingServiceRole ? "server verified" : meta.source ? "browser-policy check" : "",
-  ].filter(Boolean);
   const accountName = state.clientAccount?.name || client.contact || accountEmail || client.name;
   const workspaceName =
     client.id !== state.clientAccount?.id && client.name !== accountName ? client.name : "Client dashboard";
@@ -2458,11 +2485,10 @@ function renderClientDashboard() {
                 .join("")
             : `
               <div class="empty compact-empty">
-                No projects are available for ${accountEmail} yet.
-                ${loadDetails.length ? `<p class="muted load-diagnostics">${loadDetails.join(" / ")}</p>` : ""}
-                ${meta.error ? `<p class="muted load-diagnostics">Last load note: ${meta.error}</p>` : ""}
+                No projects are available yet.
+                <p class="muted load-diagnostics">Shared reviews will appear here.</p>
                 <div class="modal-actions inline-retry">
-                  <button class="ghost-button" type="button" id="refreshClientInvites">Refresh invites</button>
+                  <button class="ghost-button" type="button" id="refreshClientInvites">Refresh</button>
                 </div>
               </div>
             `
@@ -2512,7 +2538,7 @@ function renderClientProject() {
   root.innerHTML = `
     <section class="workspace-panel">
       <div class="workspace-head media-clean-head">
-        <p class="muted">${project.description || "Review the latest project files."}</p>
+        <p class="muted">${project.description || "Review videos, images, and notes."}</p>
         <button class="ghost-button" type="button" id="backClientDashboard">Back to projects</button>
       </div>
       <div class="media-library-grid">
@@ -2666,7 +2692,7 @@ function renderReviewShell(isAdmin) {
     createIntent = "client";
     root.innerHTML = `
       <div class="empty">
-        No videos are ready for review yet. Add a client, project, and video to create the first review page.
+        No review videos yet. Add a video and upload the first version.
       </div>
     `;
     return;
@@ -2787,7 +2813,7 @@ function renderReviewShell(isAdmin) {
         ${
           version
             ? `<div class="comments-panel">
-                <p class="eyebrow">Comments</p>
+                <p class="eyebrow">Notes</p>
                 ${
                   comments.length
                     ? comments
@@ -2804,11 +2830,11 @@ function renderReviewShell(isAdmin) {
                           `,
                         )
                         .join("")
-                    : `<div class="empty compact-empty">No comments yet.</div>`
+                    : `<div class="empty compact-empty">No notes yet.</div>`
                 }
                 <form class="comment-form" id="commentForm">
-                  <textarea name="body" placeholder="Add a comment"></textarea>
-                  <button class="primary-button">Add comment</button>
+                  <textarea name="body" placeholder="Add a note"></textarea>
+                  <button class="primary-button">Post note</button>
                 </form>
               </div>`
             : ""
@@ -2901,7 +2927,7 @@ function renderActivity() {
       ${
         state.activity.length
           ? state.activity.map((item) => `<div class="list-row"><span>${item}</span><span class="muted">Now</span></div>`).join("")
-          : `<div class="empty compact-empty">No activity yet. Sent emails and approvals will show up here.</div>`
+          : `<div class="empty compact-empty">No activity yet. Sent reviews and approvals will appear here.</div>`
       }
     </div>
   `;
