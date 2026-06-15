@@ -1323,7 +1323,17 @@ function bunnyVideoIdFromEmbedUrl(embedUrl = "") {
   return match ? match[1] : "";
 }
 
+function vimeoVideoIdFromEmbedUrl(embedUrl = "") {
+  const match = String(embedUrl).match(/vimeo\.com\/(?:video\/)?(\d+)/);
+  return match ? match[1] : "";
+}
+
 function videoThumbnailUrl(version) {
+  if (version?.provider === "Vimeo") {
+    const vimeoVideoId = version?.bunnyVideoId || vimeoVideoIdFromEmbedUrl(version?.embedUrl);
+    return vimeoVideoId ? apiUrl(`/api/vimeo-thumbnail?videoId=${encodeURIComponent(vimeoVideoId)}`) : "";
+  }
+
   const bunnyVideoId = version?.bunnyVideoId || bunnyVideoIdFromEmbedUrl(version?.embedUrl);
   if (!bunnyVideoId || !bunnyPullZoneHostname) return "";
   return `https://${bunnyPullZoneHostname}/${bunnyVideoId}/thumbnail.jpg`;
@@ -1806,22 +1816,22 @@ async function notifyProjectRecipients(button) {
   }
 }
 
-async function createBunnyUploadCredentials({ title }) {
+async function createBunnyUploadCredentials({ title, projectTitle }) {
   const response = await fetch(apiUrl("/api/create-bunny-upload"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ title }),
+    body: JSON.stringify({ title, projectTitle }),
   });
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(result.error || "Bunny upload could not start");
   return result;
 }
 
-async function createVimeoUploadCredentials({ title, size }) {
+async function createVimeoUploadCredentials({ title, size, projectTitle }) {
   const response = await fetch(apiUrl("/api/create-vimeo-upload"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ title, size }),
+    body: JSON.stringify({ title, size, projectTitle }),
   });
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(result.error || "Vimeo upload could not start");
@@ -1923,11 +1933,11 @@ async function uploadToBunny(file, credentials, onProgress) {
   });
 }
 
-async function uploadVersionFileToBunny({ file, title, button }) {
+async function uploadVersionFileToBunny({ file, title, projectTitle, button }) {
   button.textContent = "Creating Bunny video...";
   let credentials;
   try {
-    credentials = await createBunnyUploadCredentials({ title });
+    credentials = await createBunnyUploadCredentials({ title, projectTitle });
   } catch (error) {
     throw new Error(`Could not create Bunny video: ${error.message}`);
   }
@@ -1943,11 +1953,11 @@ async function uploadVersionFileToBunny({ file, title, button }) {
   return credentials;
 }
 
-async function uploadVersionFileToVimeo({ file, title, button }) {
+async function uploadVersionFileToVimeo({ file, title, projectTitle, button }) {
   button.textContent = "Creating Vimeo video...";
   let credentials;
   try {
-    credentials = await createVimeoUploadCredentials({ title, size: file.size });
+    credentials = await createVimeoUploadCredentials({ title, size: file.size, projectTitle });
   } catch (error) {
     throw new Error(`Could not create Vimeo video: ${error.message}`);
   }
@@ -1963,10 +1973,10 @@ async function uploadVersionFileToVimeo({ file, title, button }) {
   return credentials;
 }
 
-async function uploadVersionFile({ provider, file, title, button }) {
+async function uploadVersionFile({ provider, file, title, projectTitle, button }) {
   return provider === "Vimeo"
-    ? uploadVersionFileToVimeo({ file, title, button })
-    : uploadVersionFileToBunny({ file, title, button });
+    ? uploadVersionFileToVimeo({ file, title, projectTitle, button })
+    : uploadVersionFileToBunny({ file, title, projectTitle, button });
 }
 
 function render() {
@@ -3111,10 +3121,11 @@ async function handleCreateFormSubmit(event) {
           provider,
           file,
           title: `${video.title} - ${label}`,
+          projectTitle: project.name,
           button: saveButton,
         });
         embedUrl = upload.embedUrl;
-        bunnyVideoId = provider === "Bunny Stream" ? upload.videoId : "";
+        bunnyVideoId = upload.videoId || "";
       }
 
       const version = {

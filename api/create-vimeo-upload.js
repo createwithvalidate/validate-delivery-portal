@@ -22,6 +22,61 @@ function videoIdFromUri(uri = "") {
   return match ? match[1] : "";
 }
 
+function folderIdFromUri(uri = "") {
+  const match = String(uri).match(/\/(?:projects|folders)\/(\d+)/);
+  return match ? match[1] : "";
+}
+
+function normalizeName(value = "") {
+  return String(value).trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function bestVimeoThumbnail(video = {}) {
+  const sizes = Array.isArray(video.pictures?.sizes) ? video.pictures.sizes : [];
+  return (
+    sizes
+      .filter((item) => item.link)
+      .sort((a, b) => (b.width || 0) - (a.width || 0))[0]?.link ||
+    video.pictures?.base_link ||
+    ""
+  );
+}
+
+async function vimeoJson(url, { accessToken, method = "GET", body } = {}) {
+  const response = await fetch(url, {
+    method,
+    headers: {
+      Accept: "application/vnd.vimeo.*+json;version=3.4",
+      Authorization: `bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || data.message || `Vimeo request failed with status ${response.status}`);
+  }
+  return data;
+}
+
+async function ensureVimeoFolder({ accessToken, projectTitle }) {
+  const name = String(projectTitle || "").trim().slice(0, 180);
+  if (!name) return null;
+
+  const listUrl = new URL("https://api.vimeo.com/me/projects");
+  listUrl.searchParams.set("query", name);
+  listUrl.searchParams.set("per_page", "100");
+  const list = await vimeoJson(listUrl, { accessToken });
+  const match = (list.data || []).find((item) => normalizeName(item.name) === normalizeName(name));
+  if (match?.uri) return match;
+
+  return vimeoJson("https://api.vimeo.com/me/projects", {
+    accessToken,
+    method: "POST",
+    body: { name },
+  });
+}
+
 module.exports = async function handler(request, response) {
   if (request.method === "OPTIONS") {
     sendJson(response, 200, { ok: true });
@@ -53,9 +108,22 @@ module.exports = async function handler(request, response) {
 
   const title = String(payload.title || "Untitled video").slice(0, 180);
   const size = Number(payload.size || 0);
+  let folder = null;
 
   if (!Number.isFinite(size) || size <= 0) {
     sendJson(response, 400, { error: "Vimeo needs the video file size before upload." });
+    return;
+  }
+
+  try {
+    folder = await ensureVimeoFolder({
+      accessToken,
+      projectTitle: payload.projectTitle,
+    });
+  } catch (error) {
+    sendJson(response, 502, {
+      error: `Vimeo could not prepare the project folder: ${error.message}`,
+    });
     return;
   }
 
@@ -68,6 +136,7 @@ module.exports = async function handler(request, response) {
     },
     body: JSON.stringify({
       name: title,
+      ...(folder?.uri ? { folder_uri: folder.uri } : {}),
       upload: {
         approach: "tus",
         size: String(size),
@@ -92,5 +161,9 @@ module.exports = async function handler(request, response) {
     uploadLink,
     embedUrl: video.player_embed_url || `https://player.vimeo.com/video/${videoId}`,
     uri: video.uri,
+    thumbnailUrl: bestVimeoThumbnail(video),
+    folderId: folderIdFromUri(folder?.uri),
+    folderUri: folder?.uri || "",
+    folderName: folder?.name || "",
   });
 };
