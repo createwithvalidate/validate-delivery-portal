@@ -2591,19 +2591,16 @@ function renderReviewStatusContent(version, project) {
         .map(
           (row) => `
             <div class="review-status-row">
-              <div>
-                <strong>${escapeHtml(row.name)}</strong>
-                <span>${escapeHtml(row.email)}</span>
+              <div class="review-status-main">
+                <div>
+                  <strong>${escapeHtml(row.name)}</strong>
+                  <span>${escapeHtml(row.email)}</span>
+                </div>
+                <div class="review-status-approval ${row.approved ? "approved" : ""}" aria-label="${row.approved ? "Approved" : "Not approved"}"></div>
               </div>
-              <div class="review-status-flags">
-                <span class="${row.seen ? "status-dot ready" : "status-dot"}">
-                  ${row.seen ? "Seen" : "Not seen"}
-                </span>
-                <span class="${row.approved ? "status-dot approved" : "status-dot"}">
-                  ${row.approved ? "Approved" : "Not approved"}
-                </span>
-              </div>
-              <small>
+              <div class="review-status-meta">
+                <span class="${row.seen ? "status-dot ready" : "status-dot"}">${row.seen ? "Seen" : "Not seen"}</span>
+                <small>
                 ${
                   row.approvedAt
                     ? `Approved ${escapeHtml(formatReviewEventTime(row.approvedAt))}`
@@ -2611,7 +2608,8 @@ function renderReviewStatusContent(version, project) {
                       ? `Seen ${escapeHtml(formatReviewEventTime(row.seenAt))}`
                       : "Waiting for client"
                 }
-              </small>
+                </small>
+              </div>
             </div>
           `,
         )
@@ -2621,11 +2619,9 @@ function renderReviewStatusContent(version, project) {
 }
 
 function renderClientReviewStatus(version) {
-  const seen = clientReviewEvent(version?.id, "seen");
   const approved = clientReviewEvent(version?.id, "approved");
   return `
     <div class="client-review-status">
-      <span class="${seen ? "status-dot ready" : "status-dot"}">${seen ? "Seen" : "Not seen"}</span>
       <span class="${approved ? "status-dot approved" : "status-dot"}">${approved ? "Approved" : "Awaiting approval"}</span>
     </div>
   `;
@@ -2771,7 +2767,10 @@ function renderReviewShell(isAdmin) {
           version && isAdmin
             ? `<button class="ghost-button review-status-toggle" id="reviewStatusToggle" type="button" aria-expanded="false">
                 <span>Review status</span>
-                <span id="reviewStatusCount">${summary.total ? `${summary.approvedCount}/${summary.total} approved` : "No clients yet"}</span>
+                <span class="review-status-toggle-meta">
+                  <span id="reviewStatusCount">${summary.total ? `${summary.approvedCount}/${summary.total} approved` : "No clients yet"}</span>
+                  <span class="chevron-down" aria-hidden="true"></span>
+                </span>
               </button>
               <div class="review-status-panel" id="reviewStatusPanel" hidden>
                 <div id="reviewStatusMount">${renderReviewStatusContent(version, project)}</div>

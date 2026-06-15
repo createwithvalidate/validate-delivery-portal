@@ -1739,9 +1739,23 @@ button:disabled {
   gap: 12px;
 }
 
-.review-status-toggle span:last-child {
+.review-status-toggle-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
   color: var(--muted);
   font-size: 0.78rem;
+}
+
+.review-status-toggle .chevron-down {
+  width: 8px;
+  height: 8px;
+  opacity: 0.8;
+  transition: transform 160ms ease;
+}
+
+.review-status-toggle[aria-expanded="true"] .chevron-down {
+  transform: translateY(2px) rotate(225deg);
 }
 
 .review-status-panel {
@@ -1771,28 +1785,59 @@ button:disabled {
   background: rgba(255, 255, 255, 0.026);
 }
 
-.review-status-row strong,
-.review-status-row span,
-.review-status-row small {
+.review-status-main {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.review-status-main > div:first-child {
+  min-width: 0;
+}
+
+.review-status-main strong,
+.review-status-main span,
+.review-status-meta small {
   display: block;
 }
 
-.review-status-row strong {
+.review-status-main strong {
   color: var(--text);
   font-size: 0.94rem;
 }
 
-.review-status-row span,
-.review-status-row small {
+.review-status-main span,
+.review-status-meta small {
   color: var(--muted);
   font-size: 0.78rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.review-status-flags,
+.review-status-meta,
 .client-review-status {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 7px;
+}
+
+.review-status-approval {
+  flex: 0 0 auto;
+  width: 13px;
+  height: 13px;
+  margin-top: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.review-status-approval.approved {
+  border-color: rgba(82, 211, 122, 0.85);
+  background: #3fd16f;
+  box-shadow: 0 0 0 3px rgba(63, 209, 111, 0.12);
 }
 
 .client-review-status {
@@ -1833,7 +1878,7 @@ button:disabled {
 }
 
 .status-dot.approved::before {
-  background: #f8f8f4;
+  background: #3fd16f;
 }
 
 .review-side-panel > .eyebrow {
