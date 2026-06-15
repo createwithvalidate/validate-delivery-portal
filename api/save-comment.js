@@ -59,6 +59,17 @@ async function getRows(table, params) {
   return supabaseFetch(`/rest/v1/${table}?${params.toString()}`, { serviceRole: true });
 }
 
+function publicComment(row) {
+  return {
+    id: row.id,
+    versionId: row.version_id,
+    author: row.author,
+    role: row.role,
+    body: row.body,
+    createdAt: row.created_at_label || "Just now",
+  };
+}
+
 module.exports = async function handler(request, response) {
   if (request.method === "OPTIONS") {
     sendJson(response, 200, { ok: true });
@@ -145,7 +156,7 @@ module.exports = async function handler(request, response) {
       body: comment,
     });
 
-    sendJson(response, 200, { ok: true, comment: savedComment || comment });
+    sendJson(response, 200, { ok: true, comment: publicComment(savedComment || comment) });
   } catch (error) {
     sendJson(response, 500, { error: error.message || "Comment did not save." });
   }

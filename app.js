@@ -444,11 +444,11 @@ function mapVersionRow(row) {
 function mapCommentRow(row) {
   return {
     id: row.id,
-    versionId: row.version_id,
+    versionId: row.version_id || row.versionId,
     author: row.author,
     role: row.role,
     body: row.body,
-    createdAt: row.created_at_label || "Just now",
+    createdAt: row.created_at_label || row.createdAt || "Just now",
   };
 }
 
@@ -1299,13 +1299,23 @@ function reviewSummaryForVersion(version, project) {
   const rows = reviewStatusRows(version, project);
   const seenCount = rows.filter((row) => row.seen).length;
   const approvedCount = rows.filter((row) => row.approved).length;
+  const unopenedCount = rows.filter((row) => !row.seen).length;
   return {
     rows,
     total: rows.length,
     seenCount,
     approvedCount,
+    unopenedCount,
     hasApproval: Boolean(version?.approved || approvedCount),
   };
+}
+
+function reviewStatusSummaryLabel(summary) {
+  if (!summary.total) return "No clients yet";
+  if (summary.unopenedCount) {
+    return `${summary.unopenedCount} not opened / ${summary.approvedCount}/${summary.total} approved`;
+  }
+  return `All opened / ${summary.approvedCount}/${summary.total} approved`;
 }
 
 function versionReviewLabel(version, project) {
@@ -2626,6 +2636,7 @@ function renderReviewStatusContent(version, project) {
               </div>
               <div class="review-status-meta">
                 <span class="${row.seen ? "status-dot ready" : "status-dot"}">${row.seen ? "Seen" : "Not seen"}</span>
+                ${row.approved ? `<span class="status-dot approved">Approved</span>` : ""}
                 <small>
                 ${
                   row.approvedAt
@@ -2666,9 +2677,7 @@ function refreshReviewStatusUi() {
 
   const statusCount = document.querySelector("#reviewStatusCount");
   if (statusCount) {
-    statusCount.textContent = summary.total
-      ? `${summary.approvedCount}/${summary.total} approved`
-      : "No clients yet";
+    statusCount.textContent = reviewStatusSummaryLabel(summary);
   }
 
   const clientStatus = document.querySelector("#clientReviewStatus");
@@ -2794,7 +2803,7 @@ function renderReviewShell(isAdmin) {
             ? `<button class="ghost-button review-status-toggle" id="reviewStatusToggle" type="button" aria-expanded="false">
                 <span>Review status</span>
                 <span class="review-status-toggle-meta">
-                  <span id="reviewStatusCount">${summary.total ? `${summary.approvedCount}/${summary.total} approved` : "No clients yet"}</span>
+                  <span id="reviewStatusCount">${reviewStatusSummaryLabel(summary)}</span>
                   <span class="chevron-down" aria-hidden="true"></span>
                 </span>
               </button>
@@ -2889,7 +2898,9 @@ function renderReviewShell(isAdmin) {
       if (isAdmin) await savePortalData();
       else {
         saveState();
-        await insertCommentInSupabase(comment);
+        const savedComment = await insertCommentInSupabase(comment);
+        if (savedComment) upsertById(state.comments, mapCommentRow(savedComment));
+        saveState();
       }
       renderReviewShell(isAdmin);
     } catch (error) {
