@@ -2624,32 +2624,24 @@ function renderReviewStatusContent(version, project) {
   return `
     <div class="review-status-list">
       ${summary.rows
-        .map(
-          (row) => `
+        .map((row) => {
+          const statusText = row.approvedAt
+            ? `Approved ${escapeHtml(formatReviewEventTime(row.approvedAt))}`
+            : row.seenAt
+              ? `Opened ${escapeHtml(formatReviewEventTime(row.seenAt))}`
+              : "Not opened yet";
+          return `
             <div class="review-status-row">
               <div class="review-status-main">
                 <div>
                   <strong>${escapeHtml(row.name)}</strong>
-                  <span>${escapeHtml(row.email)}</span>
+                  <span>${statusText}</span>
                 </div>
                 <div class="review-status-approval ${row.approved ? "approved" : ""}" aria-label="${row.approved ? "Approved" : "Not approved"}"></div>
               </div>
-              <div class="review-status-meta">
-                <span class="${row.seen ? "status-dot ready" : "status-dot"}">${row.seen ? "Seen" : "Not seen"}</span>
-                ${row.approved ? `<span class="status-dot approved">Approved</span>` : ""}
-                <small>
-                ${
-                  row.approvedAt
-                    ? `Approved ${escapeHtml(formatReviewEventTime(row.approvedAt))}`
-                    : row.seenAt
-                      ? `Seen ${escapeHtml(formatReviewEventTime(row.seenAt))}`
-                      : "Waiting for client"
-                }
-                </small>
-              </div>
             </div>
-          `,
-        )
+          `;
+        })
         .join("")}
     </div>
   `;
