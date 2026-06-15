@@ -1470,10 +1470,7 @@ function reviewSummaryForVersion(version, project) {
 
 function reviewStatusSummaryLabel(summary) {
   if (!summary.total) return "No clients yet";
-  if (summary.unopenedCount) {
-    return `${summary.unopenedCount} not opened / ${summary.approvedCount}/${summary.total} approved`;
-  }
-  return `All opened / ${summary.approvedCount}/${summary.total} approved`;
+  return `${summary.approvedCount}/${summary.total} approved`;
 }
 
 function versionReviewLabel(version, project) {
