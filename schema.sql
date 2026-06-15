@@ -1,9 +1,7 @@
 -- Validate Delivery Portal beta schema
 -- Run this in Supabase SQL Editor.
 -- Signup rule: invite-only accounts.
--- Reusable beta codes:
---   VALIDATE-ADMIN-BETA -> admin
---   VALIDATE-CLIENT-BETA -> client
+-- Generate fresh admin/client invite codes from the app Settings tab.
 
 create extension if not exists pgcrypto;
 
@@ -11,9 +9,12 @@ create table if not exists profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   email text not null unique,
   full_name text,
+  avatar_url text,
   role text not null default 'client' check (role in ('admin', 'client')),
   created_at timestamptz not null default now()
 );
+
+alter table profiles add column if not exists avatar_url text;
 
 create table if not exists invites (
   id uuid primary key default gen_random_uuid(),
@@ -116,11 +117,12 @@ begin
     raise exception 'A valid invite is required to create an account.';
   end if;
 
-  insert into profiles (id, email, full_name, role)
+  insert into profiles (id, email, full_name, avatar_url, role)
   values (
     new.id,
     new.email,
     coalesce(new.raw_user_meta_data->>'full_name', split_part(new.email, '@', 1)),
+    new.raw_user_meta_data->>'avatar_url',
     case
       when lower(new.email) = 'henry@createwithvalidate.com' then 'admin'
       when invited_role is not null then invited_role
@@ -130,6 +132,7 @@ begin
   on conflict (id) do update set
     email = excluded.email,
     full_name = excluded.full_name,
+    avatar_url = coalesce(excluded.avatar_url, profiles.avatar_url),
     role = excluded.role;
 
   update invites
@@ -319,26 +322,21 @@ create policy "clients_read_own_project_access" on project_access
     lower(email) = public.current_user_email()
   );
 
-insert into invites (email, code, role)
-values
-  (null, 'VALIDATE-ADMIN-BETA', 'admin'),
-  (null, 'VALIDATE-CLIENT-BETA', 'client')
-on conflict (code) do update set
-  email = excluded.email,
-  role = excluded.role,
-  accepted_by = null,
-  accepted_at = null;
+delete from invites
+where code in ('VALIDATE-ADMIN-BETA', 'VALIDATE-CLIENT-BETA');
 
-insert into profiles (id, email, full_name, role)
+insert into profiles (id, email, full_name, avatar_url, role)
 select
   id,
   email,
   coalesce(raw_user_meta_data->>'full_name', split_part(email, '@', 1)),
+  raw_user_meta_data->>'avatar_url',
   case when lower(email) = 'henry@createwithvalidate.com' then 'admin' else 'client' end
 from auth.users
 on conflict (id) do update set
   email = excluded.email,
   full_name = coalesce(profiles.full_name, excluded.full_name),
+  avatar_url = coalesce(profiles.avatar_url, excluded.avatar_url),
   role = case
     when lower(excluded.email) = 'henry@createwithvalidate.com' then 'admin'
     else profiles.role

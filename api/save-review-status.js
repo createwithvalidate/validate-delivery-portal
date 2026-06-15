@@ -191,7 +191,7 @@ module.exports = async function handler(request, response) {
         author: savedComment?.author || comment.author,
         role: "client",
         body: savedComment?.body || comment.body,
-        createdAt: savedComment?.created_at_label || comment.created_at_label,
+        createdAt: savedComment?.created_at || savedComment?.created_at_label || comment.created_at_label,
       },
       approved: type === "approved",
     });

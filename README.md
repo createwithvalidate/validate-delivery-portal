@@ -16,6 +16,10 @@ A client delivery portal for Validate video review, file delivery, notes, approv
 - Per-client seen and approval tracking
 - Admin reminder notices when shared clients have not opened the latest version
 - Vimeo thumbnail support through a server-side thumbnail route
+- Profile photo upload for note avatars
+- Admin/client invite-code generator in Settings
+- Password updates and reset-email sending in Settings
+- Upload processing check for Bunny and Vimeo transcodes
 
 ## Local Preview
 
@@ -45,10 +49,7 @@ https://axvnifoamejuxxqhezwr.supabase.co
 
 Run `schema.sql` in the Supabase SQL Editor to create the required tables, RLS policies, and invite-code signup flow.
 
-Reusable beta invite codes:
-
-- Admin accounts: `VALIDATE-ADMIN-BETA`
-- Client accounts: `VALIDATE-CLIENT-BETA`
+Invite codes are generated from the admin Settings tab. Generate a fresh code for each admin or client email instead of reusing a shared code.
 
 First admin account:
 
@@ -106,6 +107,8 @@ The browser asks:
 
 The server creates or reuses a Vimeo folder named after the project, creates a private Vimeo upload, returns the TUS upload link, and the browser uploads directly to Vimeo.
 
+After either provider receives the upload, the portal can check provider processing status. If a transcode is still running, the admin can wait or save the version and come back after the provider finishes.
+
 ## Deploy
 
 Push changes to GitHub, then deploy production with Vercel:
@@ -125,4 +128,4 @@ https://validate-delivery-portal.vercel.app
 - Clients only see projects shared with their account.
 - Admins can share projects, notify all clients, or send reminders only to clients who have not opened the latest version.
 - Vimeo private videos may require Vimeo-side access permissions depending on account settings.
-- Password reset and admin invite-code management are still future production hardening items.
+- Generated invite codes are email-bound and expire after 14 days.

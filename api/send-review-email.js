@@ -49,39 +49,55 @@ function buildEmailHtml(payload) {
   const actionLabel = isInvite ? "Open project" : "Open review";
 
   return `
-    <div style="background:#090909;color:#f8f8f4;font-family:Arial,sans-serif;padding:32px;">
-      <div style="max-width:640px;margin:0 auto;">
-        <p style="letter-spacing:0.18em;text-transform:uppercase;color:#bdbdb8;font-size:12px;">
-          Validate review portal
-        </p>
-        <h1 style="font-size:34px;line-height:1;margin:0 0 18px;">
-          ${headline}
-        </h1>
-        <p style="font-size:16px;line-height:1.6;color:#deded9;">
-          ${intro}
-        </p>
-        <div style="border:1px solid #343434;border-radius:12px;padding:20px;margin:24px 0;background:#131313;">
-          <p style="margin:0 0 8px;color:#aaa;">${isInvite ? "Project" : "Video"}</p>
-          <h2 style="margin:0 0 14px;font-size:22px;">${videoTitle}</h2>
-          <p style="margin:0;color:#deded9;line-height:1.6;">${versionNote}</p>
+    <div style="margin:0;background:#060607;color:#fbfbfb;font-family:Inter,Arial,sans-serif;padding:0;">
+      <div style="display:none;max-height:0;overflow:hidden;color:transparent;">
+        ${headline}
+      </div>
+      <div style="padding:36px 18px;">
+        <div style="max-width:620px;margin:0 auto;border:1px solid #262628;border-radius:14px;background:#111113;overflow:hidden;">
+          <div style="padding:28px 28px 18px;border-bottom:1px solid #262628;background:linear-gradient(135deg,#18181a,#0d0d0e);">
+            <div style="font-size:28px;font-weight:900;letter-spacing:0.04em;color:#fbfbfb;">
+              VALIDATE
+            </div>
+            <p style="margin:16px 0 0;letter-spacing:0.18em;text-transform:uppercase;color:#a6a6a1;font-size:11px;font-weight:800;">
+              ${isInvite ? "Project invite" : "New review version"}
+            </p>
+            <h1 style="font-size:34px;line-height:1.02;margin:10px 0 0;color:#fbfbfb;">
+              ${headline}
+            </h1>
+          </div>
+
+          <div style="padding:28px;">
+            <p style="font-size:16px;line-height:1.65;color:#d9d9d5;margin:0 0 22px;">
+              ${intro}
+            </p>
+
+            <div style="border:1px solid #303033;border-radius:10px;padding:18px;margin:0 0 24px;background:#171719;">
+              <p style="margin:0 0 7px;color:#9d9d98;font-size:11px;letter-spacing:0.14em;text-transform:uppercase;font-weight:800;">${isInvite ? "Project" : "Video"}</p>
+              <h2 style="margin:0 0 12px;font-size:22px;line-height:1.1;color:#fbfbfb;">${videoTitle}</h2>
+              <p style="margin:0;color:#d9d9d5;line-height:1.6;">${versionNote}</p>
+            </div>
+
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="width:100%;margin:0;">
+              <tr>
+                <td bgcolor="#fbfbfb" style="border-radius:9px;text-align:center;">
+                  <a
+                    href="${reviewUrl}"
+                    target="_blank"
+                    style="background:#fbfbfb;border:1px solid #fbfbfb;border-radius:9px;color:#050506;display:block;font-size:16px;font-weight:800;line-height:1;text-decoration:none;padding:16px 22px;"
+                  >
+                    ${actionLabel}
+                  </a>
+                </td>
+              </tr>
+            </table>
+
+            <p style="font-size:12px;color:#8f8f8a;margin:24px 0 0;line-height:1.5;">
+              If the button does not work, paste this link into your browser:<br />
+              <a href="${reviewUrl}" target="_blank" style="color:#fbfbfb;text-decoration:underline;word-break:break-all;">${reviewUrl}</a>
+            </p>
+          </div>
         </div>
-        <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:26px 0 0;">
-          <tr>
-            <td bgcolor="#f8f8f4" style="border-radius:8px;text-align:center;">
-              <a
-                href="${reviewUrl}"
-                target="_blank"
-                style="background:#f8f8f4;border:1px solid #f8f8f4;border-radius:8px;color:#090909;display:inline-block;font-size:16px;font-weight:700;line-height:1;text-decoration:none;padding:16px 24px;min-width:180px;"
-              >
-                ${actionLabel}
-              </a>
-            </td>
-          </tr>
-        </table>
-        <p style="font-size:13px;color:#8f8f8a;margin-top:28px;line-height:1.5;">
-          If the button does not work, paste this link into your browser:<br />
-          <a href="${reviewUrl}" target="_blank" style="color:#f8f8f4;text-decoration:underline;word-break:break-all;">${reviewUrl}</a>
-        </p>
       </div>
     </div>
   `;

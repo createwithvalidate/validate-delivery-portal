@@ -1,7 +1,10 @@
+const crypto = require("node:crypto");
+
 const supabaseUrl = process.env.SUPABASE_URL || "https://axvnifoamejuxxqhezwr.supabase.co";
 const supabasePublishableKey =
   process.env.SUPABASE_PUBLISHABLE_KEY || "sb_publishable_IFOVI5nvp8DdOeqAs4lNsg__Iewd4BN";
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+const firstAdminEmail = "henry@createwithvalidate.com";
 
 function sendJson(response, statusCode, body) {
   response.statusCode = statusCode;
@@ -18,6 +21,10 @@ function authToken(request) {
   return match ? match[1] : "";
 }
 
+function isEmail(value = "") {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
 async function parseRequestBody(request) {
   if (request.body && typeof request.body !== "string") return request.body;
   if (typeof request.body === "string") return JSON.parse(request.body || "{}");
@@ -28,7 +35,7 @@ async function parseRequestBody(request) {
   return rawBody ? JSON.parse(rawBody) : {};
 }
 
-async function supabaseFetch(path, { token, serviceRole = false, method = "GET", body } = {}) {
+async function supabaseFetch(path, { token, serviceRole = false, method = "GET", body, prefer } = {}) {
   const key = serviceRole ? supabaseServiceRoleKey : supabasePublishableKey;
   const headers = {
     Accept: "application/json",
@@ -36,7 +43,7 @@ async function supabaseFetch(path, { token, serviceRole = false, method = "GET",
     apikey: key,
     Authorization: `Bearer ${serviceRole ? supabaseServiceRoleKey : token}`,
   };
-  if (method === "POST") headers.Prefer = "return=representation";
+  if (prefer) headers.Prefer = prefer;
 
   const response = await fetch(`${supabaseUrl}${path}`, {
     method,
@@ -59,15 +66,9 @@ async function getRows(table, params) {
   return supabaseFetch(`/rest/v1/${table}?${params.toString()}`, { serviceRole: true });
 }
 
-function publicComment(row) {
-  return {
-    id: row.id,
-    versionId: row.version_id,
-    author: row.author,
-    role: row.role,
-    body: row.body,
-    createdAt: row.created_at || row.created_at_label || "Just now",
-  };
+function makeInviteCode(role) {
+  const suffix = crypto.randomBytes(5).toString("hex").toUpperCase();
+  return `VALIDATE-${role.toUpperCase()}-${suffix}`;
 }
 
 module.exports = async function handler(request, response) {
@@ -89,7 +90,7 @@ module.exports = async function handler(request, response) {
 
   const token = authToken(request);
   if (!token) {
-    sendJson(response, 401, { error: "Sign in again before saving your comment." });
+    sendJson(response, 401, { error: "Sign in again before creating an invite." });
     return;
   }
 
@@ -97,67 +98,64 @@ module.exports = async function handler(request, response) {
   try {
     payload = await parseRequestBody(request);
   } catch {
-    sendJson(response, 400, { error: "Invalid comment request." });
+    sendJson(response, 400, { error: "Invalid invite request." });
     return;
   }
 
-  const versionId = String(payload.versionId || "").trim();
-  const body = String(payload.body || "").trim();
-  if (!versionId || !body) {
-    sendJson(response, 400, { error: "Comment text is required." });
+  const email = String(payload.email || "").trim().toLowerCase();
+  const role = payload.role === "admin" ? "admin" : "client";
+  if (!isEmail(email)) {
+    sendJson(response, 400, { error: "A valid invite email is required." });
     return;
   }
 
   try {
     const user = await getUser(token);
-    const email = String(user?.email || "").toLowerCase();
-    if (!email) {
-      sendJson(response, 401, { error: "Could not verify this client account." });
-      return;
-    }
-
-    const versionParams = new URLSearchParams({ select: "id,video_id", id: `eq.${versionId}`, limit: "1" });
-    const [version] = await getRows("video_versions", versionParams);
-    if (!version?.video_id) {
-      sendJson(response, 404, { error: "Version was not found." });
-      return;
-    }
-
-    const videoParams = new URLSearchParams({ select: "id,project_id", id: `eq.${version.video_id}`, limit: "1" });
-    const [video] = await getRows("videos", videoParams);
-    if (!video?.project_id) {
-      sendJson(response, 404, { error: "Video was not found." });
-      return;
-    }
-
-    const accessParams = new URLSearchParams({
-      select: "project_id,email",
-      project_id: `eq.${video.project_id}`,
-      email: `ilike.${email}`,
+    const userEmail = String(user?.email || "").toLowerCase();
+    const profileParams = new URLSearchParams({
+      select: "role,email",
+      id: `eq.${user.id}`,
       limit: "1",
     });
-    const [access] = await getRows("project_access", accessParams);
-    if (!access) {
-      sendJson(response, 403, { error: "This project is not available for your account." });
+    const [profile] = await getRows("profiles", profileParams);
+    const isAdmin = profile?.role === "admin" || userEmail === firstAdminEmail;
+    if (!isAdmin) {
+      sendJson(response, 403, { error: "Only admins can generate invite codes." });
       return;
     }
 
-    const comment = {
-      id: String(payload.id || `comment-${Date.now()}`),
-      version_id: versionId,
-      author: String(payload.author || user.user_metadata?.full_name || email),
-      role: "client",
-      body,
-      created_at_label: String(payload.createdAt || "Just now"),
-    };
-    const [savedComment] = await supabaseFetch("/rest/v1/comments", {
+    await supabaseFetch("/rest/v1/invites?code=in.(VALIDATE-ADMIN-BETA,VALIDATE-CLIENT-BETA)", {
       serviceRole: true,
-      method: "POST",
-      body: comment,
+      method: "DELETE",
+      prefer: "return=minimal",
+    }).catch((cleanupError) => {
+      console.warn("Old beta invite cleanup failed", cleanupError);
     });
 
-    sendJson(response, 200, { ok: true, comment: publicComment(savedComment || comment) });
+    const code = makeInviteCode(role);
+    const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
+    const [invite] = await supabaseFetch("/rest/v1/invites", {
+      serviceRole: true,
+      method: "POST",
+      prefer: "return=representation",
+      body: {
+        email,
+        code,
+        role,
+        expires_at: expiresAt,
+        accepted_by: null,
+        accepted_at: null,
+      },
+    });
+
+    sendJson(response, 200, {
+      ok: true,
+      code: invite?.code || code,
+      email,
+      role,
+      expiresAt: invite?.expires_at || expiresAt,
+    });
   } catch (error) {
-    sendJson(response, 500, { error: error.message || "Comment did not save." });
+    sendJson(response, 502, { error: error.message || "Invite code could not be created." });
   }
 };

@@ -88,10 +88,20 @@ module.exports = async function handler(request, response) {
     }
 
     const accountParams = new URLSearchParams({
-      select: "id,email,full_name,role,created_at",
+      select: "id,email,full_name,role,created_at,avatar_url",
       order: "created_at.desc",
     });
-    const accounts = await getRows("profiles", accountParams);
+    let accounts;
+    try {
+      accounts = await getRows("profiles", accountParams);
+    } catch (error) {
+      if (!error.message?.toLowerCase?.().includes("avatar_url")) throw error;
+      const fallbackParams = new URLSearchParams({
+        select: "id,email,full_name,role,created_at",
+        order: "created_at.desc",
+      });
+      accounts = await getRows("profiles", fallbackParams);
+    }
 
     sendJson(response, 200, {
       accounts: accounts.map((account) => ({
@@ -100,6 +110,7 @@ module.exports = async function handler(request, response) {
         fullName: account.full_name || account.email,
         role: account.role,
         createdAt: account.created_at,
+        avatarUrl: account.avatar_url || "",
       })),
     });
   } catch (error) {

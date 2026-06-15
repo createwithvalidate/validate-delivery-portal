@@ -118,6 +118,28 @@ function normalizeEmail(value = "") {
   return String(value).trim().toLowerCase();
 }
 
+function timestampValue(value) {
+  if (!value) return 0;
+  if (value instanceof Date) return value.getTime();
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function formatTimestamp(value, fallback = "") {
+  const parsed = timestampValue(value);
+  if (!parsed) return fallback || String(value || "");
+  return new Intl.DateTimeFormat([], {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(parsed));
+}
+
+function freshTimestampLabel() {
+  return formatTimestamp(new Date().toISOString());
+}
+
 function clientEmails(clientOrValue = "") {
   const value = Array.isArray(clientOrValue)
     ? clientOrValue.join(",")
@@ -153,6 +175,7 @@ function mapAccountRow(account = {}) {
     fullName: account.fullName || account.full_name || account.email,
     role: account.role === "admin" ? "admin" : "client",
     createdAt: account.createdAt || account.created_at || "",
+    avatarUrl: account.avatarUrl || account.avatar_url || "",
   };
 }
 
@@ -278,9 +301,13 @@ async function signInWithSupabase(email, password) {
   if (error) throw error;
   const user = data?.user || null;
   if (!user) return null;
+  const profile = await getCurrentProfile(user).catch((profileError) => {
+    console.warn("Profile load after sign in failed", profileError);
+    return fallbackProfileForUser(user);
+  });
   return {
     user,
-    profile: fallbackProfileForUser(user),
+    profile,
   };
 }
 
@@ -306,15 +333,28 @@ async function getCurrentProfile(user) {
   if (!client || !user) return null;
   const { data, error } = await client
     .from("profiles")
-    .select("email, full_name, role")
+    .select("email, full_name, role, avatar_url")
     .eq("id", user.id)
     .maybeSingle();
+  if (error?.message?.toLowerCase?.().includes("avatar_url")) {
+    const fallback = await client
+      .from("profiles")
+      .select("email, full_name, role")
+      .eq("id", user.id)
+      .maybeSingle();
+    if (fallback.error) throw fallback.error;
+    return {
+      ...(fallback.data || fallbackProfileForUser(user)),
+      avatar_url: user.user_metadata?.avatar_url || "",
+    };
+  }
   if (error) throw error;
   return (
     data || {
       email: user.email,
       full_name: user.user_metadata?.full_name || user.email,
       role: user.email?.toLowerCase() === firstAdminEmail ? "admin" : "client",
+      avatar_url: user.user_metadata?.avatar_url || "",
     }
   );
 }
@@ -324,15 +364,18 @@ function fallbackProfileForUser(user) {
     email: user.email,
     full_name: user.user_metadata?.full_name || user.email,
     role: user.email?.toLowerCase() === firstAdminEmail ? "admin" : "client",
+    avatar_url: user.user_metadata?.avatar_url || "",
   };
 }
 
 function applyAccountSession(user, profile) {
   const role = profile?.role === "admin" ? "admin" : "client";
+  const avatarUrl = profile?.avatar_url || user.user_metadata?.avatar_url || "";
   state.session = {
     role,
     email: user.email,
     name: profile?.full_name || user.user_metadata?.full_name || user.email,
+    avatarUrl,
   };
   state.mode = role;
   state.clientAccount =
@@ -342,6 +385,7 @@ function applyAccountSession(user, profile) {
           name: profile?.full_name || user.user_metadata?.full_name || "Client Account",
           contact: profile?.full_name || user.email,
           email: user.email,
+          avatarUrl,
           summary: "Projects appear here after Validate sends a review.",
           archived: false,
         }
@@ -385,7 +429,11 @@ async function restoreSupabaseSession() {
   const user = sessionData.session.user;
   const restoredView = state.currentView || "clients";
   const restoredRoute = state.route || "clients";
-  applyAccountSession(user, fallbackProfileForUser(user));
+  const profile = await getCurrentProfile(user).catch((profileError) => {
+    console.warn("Profile restore failed", profileError);
+    return fallbackProfileForUser(user);
+  });
+  applyAccountSession(user, profile);
   state.currentView = restoredView;
   state.route = restoredRoute;
   currentView = restoredView;
@@ -403,6 +451,7 @@ function mapClientRow(row) {
     email: row.email || "",
     summary: row.summary || "",
     archived: Boolean(row.archived),
+    createdAt: row.created_at || row.createdAt || "",
   };
 }
 
@@ -414,6 +463,7 @@ function mapProjectRow(row) {
     description: row.description || "",
     status: row.status || "review",
     archived: Boolean(row.archived),
+    createdAt: row.created_at || row.createdAt || "",
   };
 }
 
@@ -424,6 +474,7 @@ function mapVideoRow(row) {
     title: row.title,
     status: row.status || "draft",
     due: row.due || "Soon",
+    createdAt: row.created_at || row.createdAt || "",
   };
 }
 
@@ -436,7 +487,8 @@ function mapVersionRow(row) {
     embedUrl: row.embed_url || "",
     bunnyVideoId: row.bunny_video_id || "",
     note: row.note || "",
-    createdAt: row.created_at_label || "Just now",
+    createdAt: formatTimestamp(row.created_at || row.createdAt || row.created_at_label, "Just now"),
+    createdAtRaw: row.created_at || row.createdAt || "",
     approved: Boolean(row.approved),
   };
 }
@@ -448,7 +500,9 @@ function mapCommentRow(row) {
     author: row.author,
     role: row.role,
     body: row.body,
-    createdAt: row.created_at_label || row.createdAt || "Just now",
+    createdAt: formatTimestamp(row.created_at || row.createdAt || row.created_at_label, "Just now"),
+    createdAtRaw: row.created_at || row.createdAt || "",
+    avatarUrl: row.avatarUrl || row.avatar_url || "",
   };
 }
 
@@ -1098,7 +1152,7 @@ function startLoginBackgroundRotation() {
   window.__rotateLoginBackground = rotateBackground;
   backgroundRotation = window.setInterval(() => {
     if (!state.session) rotateBackground();
-  }, 4500);
+  }, 6200);
 }
 
 function startDashboardBackgroundRotation() {
@@ -1194,9 +1248,56 @@ function activeClientAccount() {
 }
 
 function currentCommentAuthor(isAdmin) {
-  if (isAdmin) return state.session?.email || "Validate";
+  if (isAdmin) return state.session?.name || state.session?.email || "Validate";
   const account = activeClientAccount();
   return account?.contact || account?.name || state.clientAccount?.name || state.session?.email || "Client";
+}
+
+function currentAvatarUrl() {
+  return state.session?.avatarUrl || state.clientAccount?.avatarUrl || "";
+}
+
+function avatarForComment(comment = {}) {
+  if (comment.avatarUrl) return comment.avatarUrl;
+  const normalizedAuthor = normalizeEmail(comment.author);
+  const sessionEmail = normalizeEmail(state.session?.email);
+  const sessionName = String(state.session?.name || "").trim().toLowerCase();
+  const authorName = String(comment.author || "").trim().toLowerCase();
+  if (
+    currentAvatarUrl() &&
+    (normalizedAuthor === sessionEmail || (sessionName && authorName === sessionName))
+  ) {
+    return currentAvatarUrl();
+  }
+  const account = (state.accountDirectory || []).find((item) => {
+    return normalizeEmail(item.email) === normalizedAuthor || String(item.fullName || "").trim().toLowerCase() === authorName;
+  });
+  return account?.avatarUrl || "";
+}
+
+function avatarInitials(name = "") {
+  const parts = String(name || "V")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  return parts
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+}
+
+function renderAvatar(name, imageUrl = "") {
+  const initials = avatarInitials(name);
+  return `
+    <div class="avatar ${imageUrl ? "has-image" : ""}">
+      ${
+        imageUrl
+          ? `<img src="${escapeHtml(imageUrl)}" alt="" onerror="this.remove(); this.closest('.avatar')?.classList.remove('has-image');" /><span>${escapeHtml(initials)}</span>`
+          : `<span>${escapeHtml(initials)}</span>`
+      }
+    </div>
+  `;
 }
 
 function reviewEventId(type, versionId, email) {
@@ -1257,7 +1358,9 @@ function makeReviewEventComment({ versionId, type }) {
       name: identity.name,
       at,
     })}`,
-    createdAt: "Just now",
+    createdAt: freshTimestampLabel(),
+    createdAtRaw: at,
+    avatarUrl: currentAvatarUrl(),
   };
 }
 
@@ -2177,6 +2280,59 @@ async function uploadVersionFile({ provider, file, title, projectTitle, button }
     : uploadVersionFileToBunny({ file, title, projectTitle, button });
 }
 
+function delay(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+async function fetchVideoProcessingStatus({ provider, videoId }) {
+  if (!videoId) return { ready: false, message: "Video ID is not available yet." };
+  const params = new URLSearchParams({ provider, videoId });
+  const response = await fetch(apiUrl(`/api/video-processing-status?${params.toString()}`));
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || "Video processing status could not be checked.");
+  return result;
+}
+
+async function offerProcessingWait({ provider, videoId, button }) {
+  if (!videoId) return;
+  let status;
+  try {
+    button.textContent = "Checking processing...";
+    status = await fetchVideoProcessingStatus({ provider, videoId });
+  } catch (error) {
+    const proceed = window.confirm(
+      `${provider} has the file, but processing status could not be checked. The video may need a few minutes before it plays. Press OK to save it now, or Cancel to stop here.`,
+    );
+    if (!proceed) throw error;
+    return;
+  }
+
+  if (status.ready) return;
+  if (status.error) {
+    throw new Error(status.message || `${provider} reported a processing problem.`);
+  }
+
+  const shouldWait = window.confirm(
+    `${provider} has the upload, but it may still be processing. Videos might not play or show thumbnails until that finishes.\n\nPress OK to wait here for it to finish, or Cancel to save the version now.`,
+  );
+  if (!shouldWait) return;
+
+  for (let attempt = 1; attempt <= 30; attempt += 1) {
+    button.textContent = `Processing check ${attempt}/30`;
+    await delay(4000);
+    status = await fetchVideoProcessingStatus({ provider, videoId });
+    if (status.error) throw new Error(status.message || `${provider} reported a processing problem.`);
+    if (status.ready) {
+      window.alert("Video processing is done. Click OK to save this version.");
+      return;
+    }
+  }
+
+  window.alert(
+    "The video is still processing. Click OK to save the version now. If it does not play right away, give Bunny or Vimeo a few more minutes and refresh.",
+  );
+}
+
 function render() {
   updateAuthView();
   if (!state.session) return;
@@ -2821,7 +2977,7 @@ function renderReviewShell(isAdmin) {
                         .map(
                           (comment) => `
                             <div class="comment-row">
-                              <div class="avatar">${escapeHtml(comment.author.slice(0, 1))}</div>
+                              ${renderAvatar(comment.author, avatarForComment(comment))}
                               <div>
                                 <strong>${escapeHtml(comment.author)}</strong>
                                 <span class="muted"> ${escapeHtml(comment.createdAt)}</span>
@@ -2883,7 +3039,9 @@ function renderReviewShell(isAdmin) {
       author: currentCommentAuthor(isAdmin),
       role: isAdmin ? "admin" : "client",
       body,
-      createdAt: "Just now",
+      createdAt: freshTimestampLabel(),
+      createdAtRaw: new Date().toISOString(),
+      avatarUrl: currentAvatarUrl(),
     };
     state.comments.unshift(comment);
     try {
@@ -2924,14 +3082,84 @@ function renderActivity() {
   dashboardHero.hidden = true;
   setPageHeader("Activity");
   document.querySelector("#openCreate").textContent = "New client";
+
+  const rows = state.session?.role === "admin" ? adminActivityRows() : clientActivityRows();
+  const emptyText =
+    state.session?.role === "admin"
+      ? "New admin and client accounts will appear here."
+      : "Project updates will appear here when Validate shares or updates a review.";
+
   root.innerHTML = `
-    <div class="panel stack">
-      <p class="eyebrow">Recent</p>
-      ${
-        state.activity.length
-          ? state.activity.map((item) => `<div class="list-row"><span>${item}</span><span class="muted">Now</span></div>`).join("")
-          : `<div class="empty compact-empty">No activity yet. Sent reviews and approvals will appear here.</div>`
-      }
+    <div class="activity-layout">
+      <section class="panel stack activity-panel">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">${state.session?.role === "admin" ? "Accounts" : "Project updates"}</p>
+            <h3>${state.session?.role === "admin" ? "Recent accounts" : "Latest in your projects"}</h3>
+          </div>
+          <span class="metric">${rows.length} item${rows.length === 1 ? "" : "s"}</span>
+        </div>
+        ${
+          rows.length
+            ? rows.map(renderActivityRow).join("")
+            : `<div class="empty compact-empty">${emptyText}</div>`
+        }
+      </section>
+    </div>
+  `;
+}
+
+function adminActivityRows() {
+  return [...(state.accountDirectory || [])]
+    .sort((a, b) => timestampValue(b.createdAt) - timestampValue(a.createdAt))
+    .map((account) => ({
+      title: account.fullName || account.email,
+      detail: account.email,
+      meta: account.role === "admin" ? "Admin account" : "Client account",
+      at: account.createdAt,
+      avatarUrl: account.avatarUrl,
+    }));
+}
+
+function clientActivityRows() {
+  const delivered = new Set(state.deliveredProjectIds || []);
+  const projects = state.projects.filter((project) => delivered.has(project.id));
+  const projectRows = projects.map((project) => ({
+    title: project.name,
+    detail: project.description || "Project shared with your dashboard.",
+    meta: "Project shared",
+    at: project.createdAt,
+  }));
+  const videoIds = new Set(projects.flatMap((project) => projectVideos(project.id).map((video) => video.id)));
+  const versionRows = state.versions
+    .filter((version) => videoIds.has(version.videoId))
+    .map((version) => {
+      const video = state.videos.find((item) => item.id === version.videoId);
+      const project = projects.find((item) => item.id === video?.projectId);
+      return {
+        title: version.label,
+        detail: [project?.name, video?.title].filter(Boolean).join(" / ") || "New review version",
+        meta: "New version",
+        at: version.createdAtRaw || version.createdAt,
+      };
+    });
+  return [...versionRows, ...projectRows]
+    .filter((row) => row.title)
+    .sort((a, b) => timestampValue(b.at) - timestampValue(a.at));
+}
+
+function renderActivityRow(row) {
+  return `
+    <div class="activity-row">
+      ${renderAvatar(row.title, row.avatarUrl)}
+      <div>
+        <strong>${escapeHtml(row.title)}</strong>
+        <span>${escapeHtml(row.detail || row.meta || "")}</span>
+      </div>
+      <div class="activity-time">
+        <span>${escapeHtml(row.meta || "")}</span>
+        <small>${escapeHtml(formatTimestamp(row.at, "Recently"))}</small>
+      </div>
     </div>
   `;
 }
@@ -2941,25 +3169,271 @@ function renderSettings() {
   dashboardHero.hidden = true;
   setPageHeader("Settings");
   document.querySelector("#openCreate").textContent = "New client";
+  const isAdmin = state.session?.role === "admin";
+  const avatarUrl = currentAvatarUrl();
   root.innerHTML = `
-    <div class="grid">
-      <article class="card">
-        <p class="eyebrow">Bunny Stream</p>
-        <h3>Connect video library</h3>
-        <p>Store library ID and API key as Vercel environment variables.</p>
-      </article>
-      <article class="card">
-        <p class="eyebrow">Vimeo</p>
-        <h3>Enable uploads</h3>
-        <p>Use an app token with upload and edit scopes for account-owned videos.</p>
-      </article>
-      <article class="card">
-        <p class="eyebrow">Email</p>
-        <h3>Client notifications</h3>
-        <p>Send branded review links when a new version is ready.</p>
-      </article>
+    <div class="settings-layout">
+      <section class="panel settings-card profile-settings-card">
+        <div class="settings-card-head">
+          <div>
+            <p class="eyebrow">Profile</p>
+            <h3>Your account</h3>
+          </div>
+          ${renderAvatar(state.session?.name || state.session?.email, avatarUrl)}
+        </div>
+        <p class="muted">This name and photo show beside notes you leave on review pages.</p>
+        <label class="profile-upload">
+          Profile picture
+          <input id="avatarUpload" type="file" accept="image/*" />
+        </label>
+      </section>
+
+      <section class="panel settings-card">
+        <div class="settings-card-head">
+          <div>
+            <p class="eyebrow">Security</p>
+            <h3>Password</h3>
+          </div>
+        </div>
+        <form class="settings-form" id="passwordForm">
+          <label>
+            New password
+            <input name="newPassword" type="password" minlength="8" placeholder="At least 8 characters" />
+          </label>
+          <button class="primary-button" type="submit">Update password</button>
+          <button class="ghost-button" type="button" id="sendPasswordReset">Email reset link</button>
+        </form>
+      </section>
+
+      ${
+        isAdmin
+          ? `<section class="panel settings-card invite-generator-card">
+              <div class="settings-card-head">
+                <div>
+                  <p class="eyebrow">Invite generator</p>
+                  <h3>Create signup code</h3>
+                </div>
+              </div>
+              <form class="settings-form" id="inviteGeneratorForm">
+                <label>
+                  Account type
+                  <select name="role">
+                    <option value="client">Client</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </label>
+                <label>
+                  Email
+                  <input name="email" type="email" placeholder="person@example.com" />
+                </label>
+                <button class="primary-button" type="submit">Generate code</button>
+              </form>
+              <div class="invite-result" id="inviteResult" hidden></div>
+            </section>`
+          : ""
+      }
+
+      <section class="panel settings-card integration-settings">
+        <p class="eyebrow">Connections</p>
+        <div class="integration-list">
+          <div>
+            <strong>Bunny Stream</strong>
+            <span>Uploads, project collections, streaming embeds.</span>
+          </div>
+          <div>
+            <strong>Vimeo</strong>
+            <span>Uploads, private videos, project folders.</span>
+          </div>
+          <div>
+            <strong>Resend</strong>
+            <span>Clean client invite and update emails.</span>
+          </div>
+        </div>
+      </section>
     </div>
   `;
+
+  setupSettingsHandlers();
+}
+
+function readAvatarFile(file) {
+  return new Promise((resolve, reject) => {
+    if (!file) {
+      resolve("");
+      return;
+    }
+    if (!file.type.startsWith("image/")) {
+      reject(new Error("Choose an image file for your profile picture."));
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Profile picture could not be read."));
+    reader.onload = () => {
+      const image = new Image();
+      image.onerror = () => reject(new Error("Profile picture could not be opened."));
+      image.onload = () => {
+        const size = 256;
+        const canvas = document.createElement("canvas");
+        const context = canvas.getContext("2d");
+        const shortestSide = Math.min(image.width, image.height);
+        const sourceX = (image.width - shortestSide) / 2;
+        const sourceY = (image.height - shortestSide) / 2;
+        canvas.width = size;
+        canvas.height = size;
+        context.drawImage(image, sourceX, sourceY, shortestSide, shortestSide, 0, 0, size, size);
+        resolve(canvas.toDataURL("image/jpeg", 0.82));
+      };
+      image.src = String(reader.result || "");
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function saveProfileAvatar(avatarUrl) {
+  const client = getSupabase();
+  if (!client || !state.session) throw new Error("Sign in again before updating your profile.");
+
+  const { error: updateError } = await client.auth.updateUser({
+    data: { avatar_url: avatarUrl },
+  });
+  if (updateError) throw updateError;
+
+  state.session.avatarUrl = avatarUrl;
+  if (state.clientAccount) state.clientAccount.avatarUrl = avatarUrl;
+  const ownAccount = accountForEmail(state.session.email);
+  if (ownAccount) ownAccount.avatarUrl = avatarUrl;
+  saveState();
+
+  const { data: userData } = await client.auth.getUser();
+  if (userData?.user?.id) {
+    const { error: profileError } = await client
+      .from("profiles")
+      .update({ avatar_url: avatarUrl })
+      .eq("id", userData.user.id);
+    if (profileError && !profileError.message?.toLowerCase?.().includes("avatar_url")) {
+      throw profileError;
+    }
+  }
+}
+
+async function generateInviteCode({ role, email }) {
+  const token = await supabaseAccessToken();
+  if (!token) throw new Error("Sign in again before generating an invite.");
+  const response = await fetch(apiUrl("/api/create-invite"), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ role, email }),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || "Invite code could not be created.");
+  return result;
+}
+
+function setupSettingsHandlers() {
+  root.querySelector("#avatarUpload")?.addEventListener("change", async (event) => {
+    const file = event.currentTarget.files?.[0];
+    if (!file) return;
+    try {
+      showToast("Saving profile picture...");
+      const avatarUrl = await readAvatarFile(file);
+      await saveProfileAvatar(avatarUrl);
+      showToast("Profile picture saved");
+      renderSettings();
+    } catch (error) {
+      showToast(error.message || "Profile picture did not save");
+    }
+  });
+
+  root.querySelector("#passwordForm")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const button = event.currentTarget.querySelector("button[type='submit']");
+    const password = String(new FormData(event.currentTarget).get("newPassword") || "").trim();
+    if (password.length < 8) {
+      showToast("Use at least 8 characters for the new password");
+      return;
+    }
+    const originalText = button.textContent;
+    button.disabled = true;
+    button.textContent = "Saving...";
+    try {
+      const client = getSupabase();
+      if (!client) throw new Error("Supabase is still loading.");
+      const { error } = await client.auth.updateUser({ password });
+      if (error) throw error;
+      event.currentTarget.reset();
+      showToast("Password updated");
+    } catch (error) {
+      showToast(error.message || "Password did not update");
+    } finally {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
+  });
+
+  root.querySelector("#sendPasswordReset")?.addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    const originalText = button.textContent;
+    button.disabled = true;
+    button.textContent = "Sending...";
+    try {
+      const client = getSupabase();
+      if (!client || !state.session?.email) throw new Error("Sign in again before sending a reset email.");
+      const { error } = await client.auth.resetPasswordForEmail(state.session.email, {
+        redirectTo: `${location.origin}${location.pathname}`,
+      });
+      if (error) throw error;
+      showToast("Password reset email sent");
+    } catch (error) {
+      showToast(error.message || "Reset email did not send");
+    } finally {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
+  });
+
+  root.querySelector("#inviteGeneratorForm")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const button = form.querySelector("button[type='submit']");
+    const resultBox = root.querySelector("#inviteResult");
+    const formData = new FormData(form);
+    const role = String(formData.get("role") || "client");
+    const email = normalizeEmail(formData.get("email"));
+    if (!email) {
+      showToast("Add the email for this invite code");
+      return;
+    }
+
+    const originalText = button.textContent;
+    button.disabled = true;
+    button.textContent = "Generating...";
+    try {
+      const invite = await generateInviteCode({ role, email });
+      resultBox.hidden = false;
+      resultBox.innerHTML = `
+        <p class="eyebrow">${escapeHtml(invite.role)} invite</p>
+        <div class="copy-row">
+          <code>${escapeHtml(invite.code)}</code>
+          <button class="ghost-button small-action" type="button" id="copyInviteCode">Copy</button>
+        </div>
+        <p class="muted">Send this to ${escapeHtml(invite.email)}. It can only create a ${escapeHtml(invite.role)} account for that email.</p>
+      `;
+      root.querySelector("#copyInviteCode")?.addEventListener("click", async () => {
+        await navigator.clipboard?.writeText(invite.code);
+        showToast("Invite code copied");
+      });
+      showToast("Invite code generated");
+    } catch (error) {
+      showToast(error.message || "Invite code could not be generated");
+    } finally {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
+  });
 }
 
 function renderAccountOptions({
@@ -3423,6 +3897,7 @@ async function handleCreateFormSubmit(event) {
         });
         embedUrl = upload.embedUrl;
         bunnyVideoId = upload.videoId || "";
+        await offerProcessingWait({ provider, videoId: bunnyVideoId, button: saveButton });
       }
 
       const version = {
@@ -3433,7 +3908,8 @@ async function handleCreateFormSubmit(event) {
         embedUrl,
         bunnyVideoId,
         note: form.get("note") || "New review version.",
-        createdAt: "Just now",
+        createdAt: freshTimestampLabel(),
+        createdAtRaw: new Date().toISOString(),
         approved: false,
       };
       state.versions.unshift(version);

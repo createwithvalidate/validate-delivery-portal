@@ -104,16 +104,15 @@ button:disabled {
   filter: saturate(1.12) contrast(1.06) brightness(0.94);
   opacity: 0;
   transform: scale(1.05);
+  will-change: opacity, transform;
   transition:
-    opacity 1200ms ease,
-    transform 6500ms ease;
-  animation: loginPhotoCycle 45s infinite;
+    opacity 1600ms ease,
+    transform 9000ms ease;
 }
 
 .bg-photo-wide {
   background-image: url("assets/login-taneycomo.jpg");
   background-position: center 55%;
-  animation-delay: 0s;
 }
 
 .bg-photo-paynes,
@@ -131,49 +130,41 @@ button:disabled {
 .bg-photo-paynes {
   background-image: url("assets/login-paynes-valley.jpg");
   background-position: center;
-  animation-delay: 5s;
 }
 
 .bg-photo-court {
   background-image: url("assets/login-steadicam-court.jpg");
   background-position: center;
-  animation-delay: 10s;
 }
 
 .bg-photo-big-cedar {
   background-image: url("assets/login-big-cedar.jpg");
   background-position: center;
-  animation-delay: 15s;
 }
 
 .bg-photo-herschend {
   background-image: url("assets/login-herschend.jpg");
   background-position: center;
-  animation-delay: 20s;
 }
 
 .bg-photo-rink {
   background-image: url("assets/login-rink-production.jpg");
   background-position: center;
-  animation-delay: 25s;
 }
 
 .bg-photo-sdc {
   background-image: url("assets/login-sdc-campaign.jpg");
   background-position: center;
-  animation-delay: 30s;
 }
 
 .bg-photo-lake {
   background-image: url("assets/login-lake-wheelchair.jpg");
   background-position: center;
-  animation-delay: 35s;
 }
 
 .bg-photo-christmas {
   background-image: url("assets/login-christmas-house.jpg");
   background-position: center;
-  animation-delay: 40s;
 }
 
 .login-screen[data-bg-index="0"] .bg-photo-wide,
@@ -187,25 +178,6 @@ button:disabled {
 .login-screen[data-bg-index="8"] .bg-photo-christmas {
   opacity: 0.96;
   transform: scale(1);
-}
-
-@keyframes loginPhotoCycle {
-  0%,
-  100% {
-    opacity: 0;
-    transform: scale(1.05);
-  }
-
-  2%,
-  11% {
-    opacity: 0.96;
-    transform: scale(1);
-  }
-
-  14% {
-    opacity: 0;
-    transform: scale(1.03);
-  }
 }
 
 .login-screen::before {
@@ -1018,6 +990,27 @@ button:disabled {
   gap: 18px;
 }
 
+.section-head,
+.settings-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.section-head h3,
+.settings-card-head h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  letter-spacing: 0;
+}
+
+.settings-card-head .avatar {
+  width: 48px;
+  height: 48px;
+  font-size: 0.9rem;
+}
+
 .workspace-panel {
   display: grid;
   gap: 18px;
@@ -1272,6 +1265,155 @@ button:disabled {
 
 .media-row .meta-strip {
   margin-top: 9px;
+}
+
+.activity-layout,
+.settings-layout {
+  display: grid;
+  gap: 14px;
+}
+
+.activity-panel {
+  max-width: 920px;
+}
+
+.activity-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 13px;
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.022);
+}
+
+.activity-row strong,
+.activity-row span,
+.activity-row small {
+  display: block;
+}
+
+.activity-row strong {
+  color: var(--text);
+  font-size: 0.98rem;
+}
+
+.activity-row span {
+  color: var(--muted);
+  font-size: 0.86rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activity-time {
+  text-align: right;
+}
+
+.activity-time span {
+  color: var(--dim);
+  font-size: 0.7rem;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.activity-time small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.settings-layout {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+}
+
+.settings-card {
+  display: grid;
+  gap: 14px;
+}
+
+.settings-card > .muted {
+  margin: 0;
+}
+
+.profile-settings-card {
+  min-height: 230px;
+}
+
+.profile-upload,
+.settings-form {
+  display: grid;
+  gap: 10px;
+}
+
+.settings-form .primary-button,
+.settings-form .ghost-button {
+  width: 100%;
+}
+
+.invite-generator-card,
+.integration-settings {
+  grid-column: span 2;
+}
+
+.invite-result {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.invite-result[hidden] {
+  display: none;
+}
+
+.copy-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.copy-row code {
+  min-width: 0;
+  overflow: hidden;
+  padding: 11px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.integration-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.integration-list > div {
+  display: grid;
+  gap: 5px;
+  padding: 13px;
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.022);
+}
+
+.integration-list strong {
+  color: var(--text);
+}
+
+.integration-list span {
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.45;
 }
 
 .open-arrow {
@@ -1949,6 +2091,7 @@ button:disabled {
 }
 
 .avatar {
+  position: relative;
   display: grid;
   flex: 0 0 auto;
   place-items: center;
@@ -1959,6 +2102,21 @@ button:disabled {
   color: var(--accent);
   font-size: 0.78rem;
   font-weight: 900;
+  overflow: hidden;
+}
+
+.avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.avatar.has-image {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.avatar.has-image span {
+  display: none;
 }
 
 .comment-row p {
@@ -2218,6 +2376,16 @@ label {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .settings-layout,
+  .integration-list {
+    grid-template-columns: 1fr;
+  }
+
+  .invite-generator-card,
+  .integration-settings {
+    grid-column: auto;
+  }
+
   .workspace-head {
     align-items: flex-start;
     flex-direction: column;
@@ -2247,11 +2415,20 @@ label {
 
   .topbar,
   .list-row,
+  .activity-row,
   .version-row,
   .media-card-head,
   .review-head {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .activity-row {
+    display: flex;
+  }
+
+  .activity-time {
+    text-align: left;
   }
 
   .topbar-actions,
