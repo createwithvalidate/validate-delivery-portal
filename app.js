@@ -65,6 +65,7 @@ const authModeToggle = document.querySelector("#authModeToggle");
 const accessCodeField = document.querySelector("#accessCodeField");
 const adminAccess = document.querySelector("#adminAccess");
 const sessionLabel = document.querySelector("#sessionLabel");
+const homeNavLabel = document.querySelector("#homeNavLabel");
 const dialog = document.querySelector("#createDialog");
 const dialogTitle = document.querySelector("#dialogTitle");
 const dialogFields = document.querySelector("#dialogFields");
@@ -1149,9 +1150,16 @@ function setPageHeader(title, eyebrow = "Client delivery portal", style = "") {
 function updateSessionFooter() {
   const name = state.clientAccount?.name || state.session?.name || state.session?.email || "Signed in";
   const email = state.session?.email || "";
-  if (sessionLabel) sessionLabel.textContent = state.session?.role ? state.session.role : "";
+  if (sessionLabel) sessionLabel.textContent = state.session?.role === "admin" ? "Admin account" : "Client account";
   if (sessionName) sessionName.textContent = name;
   if (sessionEmail) sessionEmail.textContent = email;
+}
+
+function updateNavigationLabels() {
+  const isClient = state.session?.role === "client";
+  if (homeNavLabel) homeNavLabel.textContent = isClient ? "Projects" : "Clients";
+  const homeButton = document.querySelector('.nav-item[data-route="clients"]');
+  if (homeButton) homeButton.setAttribute("aria-label", isClient ? "Projects" : "Clients");
 }
 
 function updateAuthView() {
@@ -1166,6 +1174,7 @@ function updateAuthView() {
   startDashboardBackgroundRotation();
 
   updateSessionFooter();
+  updateNavigationLabels();
   document.querySelector("#openCreate").hidden = state.session.role !== "admin" || state.mode === "client";
   if (deleteClientAction) deleteClientAction.hidden = true;
 }
@@ -1477,8 +1486,7 @@ function versionReviewLabel(version, project) {
   const summary = reviewSummaryForVersion(version, project);
   if (!summary.total) return version?.approved ? "approved" : "review";
   if (summary.approvedCount) return `${summary.approvedCount}/${summary.total} approved`;
-  if (summary.seenCount) return `${summary.seenCount}/${summary.total} seen`;
-  return "not seen";
+  return "in review";
 }
 
 function latestProjectReviewStatus(project) {
@@ -1492,19 +1500,6 @@ function latestProjectReviewStatus(project) {
     unopened,
     unopenedEmails: unopened.map((row) => row.email),
   };
-}
-
-function renderUnopenedNotice(status) {
-  if (!status?.version || !status.unopened.length) return "";
-  const names = status.unopened.map((row) => row.name || row.email);
-  const visibleNames = names.slice(0, 3).join(", ");
-  const extraCount = names.length > 3 ? ` +${names.length - 3} more` : "";
-  return `
-    <div class="delivery-notice">
-      <strong>${status.unopened.length} client${status.unopened.length === 1 ? "" : "s"} not opened</strong>
-      <span>${escapeHtml(visibleNames)}${extraCount} ${status.unopened.length === 1 ? "has" : "have"} not opened ${escapeHtml(status.version.label)} yet.</span>
-    </div>
-  `;
 }
 
 function setRoute(nextRoute) {
@@ -1539,8 +1534,8 @@ function setLoginRole(nextRole) {
     ? "Manage delivery."
     : "Review the latest cut.";
   document.querySelector(".login-copy").textContent = isAdmin
-    ? "Manage clients, projects, video versions, notes, notifications, and approvals from one clean workspace."
-    : "Sign in to your review dashboard to see projects, versions, notes, and approvals.";
+    ? "Manage clients, projects, video versions, comments, notifications, and approvals from one clean workspace."
+    : "Sign in to your review dashboard to see projects, versions, comments, and approvals.";
 }
 
 function setAuthMode(nextMode) {
@@ -1569,8 +1564,8 @@ function setAuthMode(nextMode) {
   document.querySelector(".login-copy").textContent = isCreate
     ? "Create your account from an invitation. Projects appear after Validate sends a review."
     : loginRole === "admin"
-      ? "Manage clients, projects, video versions, notes, notifications, and approvals from one clean workspace."
-      : "Sign in to your review dashboard to see projects, versions, notes, and approvals.";
+      ? "Manage clients, projects, video versions, comments, notifications, and approvals from one clean workspace."
+      : "Sign in to your review dashboard to see projects, versions, comments, and approvals.";
 }
 
 async function completeSignup(form) {
@@ -1751,10 +1746,14 @@ function renderVideoCardGrid({
                   <strong class="video-card-title">${escapeHtml(video.title)}</strong>
                   <span class="muted">${version ? `Latest: ${escapeHtml(version.label)}` : "Add first version."}</span>
                 </span>
-                <span class="meta-strip">
-                  <span>${versionCountLabel(versions.length)}</span>
-                  ${noteCount ? `<span>${noteCount} comments</span>` : ""}
-                </span>
+                ${
+                  versions.length || noteCount
+                    ? `<span class="meta-strip">
+                        ${versions.length ? `<span>${versionCountLabel(versions.length)}</span>` : ""}
+                        ${noteCount ? `<span>${noteCount} comments</span>` : ""}
+                      </span>`
+                    : ""
+                }
                 <span class="video-card-action">${versions.length ? actionLabel : "Add first version"}</span>
               </span>
             </button>
@@ -1975,7 +1974,7 @@ function setHeroMode(mode, projects = []) {
   heroEyebrow.textContent = isClient ? "Client review" : "Delivery workspace";
   heroHeadline.textContent = isClient ? "Ready for review." : "Review work, delivered clearly.";
   heroSubcopy.textContent = isClient
-    ? "Open a project, review the latest version, leave notes, and approve final cuts."
+    ? "Open a project, review the latest version, leave comments, and approve final cuts."
     : "Manage clients, files, review links, comments, and approvals from one focused workspace.";
   document.querySelector("#heroClientCount").textContent = isClient
     ? `${projects.length} projects`
@@ -2258,9 +2257,14 @@ async function notifyProjectRecipients(button, targetEmails = null) {
 }
 
 async function createBunnyUploadCredentials({ title, projectTitle }) {
+  const token = await supabaseAccessToken();
+  if (!token) throw new Error("Sign in again before uploading a video.");
   const response = await fetch(apiUrl("/api/create-bunny-upload"), {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
     body: JSON.stringify({ title, projectTitle }),
   });
   const result = await response.json().catch(() => ({}));
@@ -2269,9 +2273,14 @@ async function createBunnyUploadCredentials({ title, projectTitle }) {
 }
 
 async function createVimeoUploadCredentials({ title, size, projectTitle }) {
+  const token = await supabaseAccessToken();
+  if (!token) throw new Error("Sign in again before uploading a video.");
   const response = await fetch(apiUrl("/api/create-vimeo-upload"), {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
     body: JSON.stringify({ title, size, projectTitle }),
   });
   const result = await response.json().catch(() => ({}));
@@ -2427,7 +2436,10 @@ function delay(ms) {
 async function fetchVideoProcessingStatus({ provider, videoId }) {
   if (!videoId) return { ready: false, message: "Video ID is not available yet." };
   const params = new URLSearchParams({ provider, videoId });
-  const response = await fetch(apiUrl(`/api/video-processing-status?${params.toString()}`));
+  const token = await supabaseAccessToken();
+  const response = await fetch(apiUrl(`/api/video-processing-status?${params.toString()}`), {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(result.error || "Video processing status could not be checked.");
   return result;
@@ -2639,15 +2651,12 @@ function renderProjectDetail() {
   const recipients = projectRecipientEmails(project.id);
   const isShared = recipients.length > 0;
   const latestStatus = latestProjectReviewStatus(project);
-  const unopenedEmails = latestStatus.unopenedEmails;
   const sendStatus = !isShared
     ? "Share this project when the first review is ready."
     : !latestStatus.version
       ? `${recipients.length} client account${recipients.length === 1 ? "" : "s"} ${recipients.length === 1 ? "has" : "have"} access.`
-      : unopenedEmails.length
-        ? `${unopenedEmails.length} client${unopenedEmails.length === 1 ? "" : "s"} still ${unopenedEmails.length === 1 ? "has" : "have"} not opened the latest version.`
-        : "All shared clients have opened the latest version.";
-  const deliveryButtonLabel = !isShared ? "Share project" : unopenedEmails.length ? "Send reminder" : "Notify clients";
+      : `${recipients.length} client account${recipients.length === 1 ? "" : "s"} will receive update notices when you choose to send them.`;
+  const deliveryButtonLabel = !isShared ? "Share project" : "Notify clients";
   setPageHeader(project.name);
   document.querySelector("#openCreate").textContent = "Add video";
   document.querySelector("#openCreate").hidden = true;
@@ -2713,7 +2722,7 @@ function renderProjectDetail() {
     });
   });
   root.querySelector("#deliveryPrimary").addEventListener("click", (event) => {
-    if (isShared) notifyProjectRecipients(event.currentTarget, unopenedEmails.length ? unopenedEmails : null);
+    if (isShared) notifyProjectRecipients(event.currentTarget);
     else openProjectShareDialog();
   });
   root.querySelector("#manageClients").addEventListener("click", () => {
@@ -2767,7 +2776,7 @@ function renderClientDashboard() {
                       ${hasUnseenLatest ? `<span class="new-project-dot" aria-label="New update"></span>` : ""}
                       <p class="eyebrow">${project.status}</p>
                       <h3>${project.name}</h3>
-                      <p>${project.description || "Review files and notes for this project."}</p>
+                      <p>${project.description || "Review files and comments for this project."}</p>
                       ${renderMetaStrip([
                         { show: videos.length > 0, label: `${videos.length} video${videos.length === 1 ? "" : "s"}` },
                         { show: versions.length > 0, label: versionCountLabel(versions.length) },
@@ -2838,7 +2847,7 @@ function renderClientProject() {
   root.innerHTML = `
     <section class="workspace-panel">
       <div class="workspace-head media-clean-head">
-        <p class="muted">${project.description || "Review videos, images, and notes."}</p>
+        <p class="muted">${project.description || "Review videos, images, and comments."}</p>
         <button class="ghost-button" type="button" id="backClientDashboard">Back to projects</button>
       </div>
       <div class="media-library-grid">
@@ -2918,8 +2927,8 @@ function renderReviewStatusContent(version, project) {
           const statusText = row.approvedAt
             ? `Approved ${escapeHtml(formatReviewEventTime(row.approvedAt))}`
             : row.seenAt
-              ? `Opened ${escapeHtml(formatReviewEventTime(row.seenAt))}`
-              : "Not opened yet";
+              ? `Viewed ${escapeHtml(formatReviewEventTime(row.seenAt))}`
+              : "Awaiting review";
           return `
             <div class="review-status-row">
               <div class="review-status-main">
@@ -3104,7 +3113,7 @@ function renderReviewShell(isAdmin) {
         ${
           version
             ? `<div class="comments-panel">
-                <p class="eyebrow">Notes</p>
+                <p class="eyebrow">Comments</p>
                 ${
                   comments.length
                     ? comments
@@ -3121,11 +3130,11 @@ function renderReviewShell(isAdmin) {
                           `,
                         )
                         .join("")
-                    : `<div class="empty compact-empty">No notes yet.</div>`
+                    : `<div class="empty compact-empty">No comments yet.</div>`
                 }
                 <form class="comment-form" id="commentForm">
-                  <textarea name="body" placeholder="Add a note"></textarea>
-                  <button class="primary-button">Post note</button>
+                  <textarea name="body" placeholder="Add a comment"></textarea>
+                  <button class="primary-button">Post comment</button>
                 </form>
               </div>`
             : ""
@@ -3211,12 +3220,13 @@ function renderReviewShell(isAdmin) {
 function renderActivity() {
   rememberView("activity");
   dashboardHero.hidden = true;
-  setPageHeader("Activity");
-  document.querySelector("#openCreate").textContent = "New client";
+  const isAdmin = state.session?.role === "admin";
+  setPageHeader("Activity", isAdmin ? "Workspace activity" : "Client activity");
+  document.querySelector("#openCreate").hidden = true;
 
-  const rows = state.session?.role === "admin" ? adminActivityRows() : clientActivityRows();
+  const rows = isAdmin ? adminActivityRows() : clientActivityRows();
   const emptyText =
-    state.session?.role === "admin"
+    isAdmin
       ? "New admin and client accounts will appear here."
       : "Project updates will appear here when Validate shares or updates a review.";
 
@@ -3225,8 +3235,8 @@ function renderActivity() {
       <section class="panel stack activity-panel">
         <div class="section-head">
           <div>
-            <p class="eyebrow">${state.session?.role === "admin" ? "Accounts" : "Project updates"}</p>
-            <h3>${state.session?.role === "admin" ? "Recent accounts" : "Latest in your projects"}</h3>
+            <p class="eyebrow">${isAdmin ? "Accounts" : "Project updates"}</p>
+            <h3>${isAdmin ? "Recent accounts" : "Latest in your projects"}</h3>
           </div>
           <span class="metric">${rows.length} item${rows.length === 1 ? "" : "s"}</span>
         </div>
@@ -3298,9 +3308,9 @@ function renderActivityRow(row) {
 function renderSettings() {
   rememberView("settings");
   dashboardHero.hidden = true;
-  setPageHeader("Settings");
-  document.querySelector("#openCreate").textContent = "New client";
   const isAdmin = state.session?.role === "admin";
+  setPageHeader("Settings", isAdmin ? "Admin settings" : "Account settings");
+  document.querySelector("#openCreate").hidden = true;
   const avatarUrl = currentAvatarUrl();
   const phoneNumber = state.session?.phoneNumber || "";
   const smsEnabled = Boolean(phoneNumber && state.session?.smsOptIn && !state.session?.smsOptedOut);
@@ -3314,7 +3324,7 @@ function renderSettings() {
           </div>
           ${renderAvatar(state.session?.name || state.session?.email, avatarUrl)}
         </div>
-        <p class="muted">This name and photo show beside notes you leave on review pages.</p>
+        <p class="muted">This name and photo show beside comments you leave on review pages.</p>
         <label class="profile-upload">
           Profile picture
           <input id="avatarUpload" type="file" accept="image/*" />
@@ -3388,23 +3398,27 @@ function renderSettings() {
           : ""
       }
 
-      <section class="panel settings-card integration-settings">
-        <p class="eyebrow">Connections</p>
-        <div class="integration-list">
-          <div>
-            <strong>Bunny Stream</strong>
-            <span>Uploads, project collections, streaming embeds.</span>
-          </div>
-          <div>
-            <strong>Vimeo</strong>
-            <span>Uploads, unlisted review embeds, project folders.</span>
-          </div>
-          <div>
-            <strong>Resend</strong>
-            <span>Clean client invite and update emails.</span>
-          </div>
-        </div>
-      </section>
+      ${
+        isAdmin
+          ? `<section class="panel settings-card integration-settings">
+              <p class="eyebrow">Connections</p>
+              <div class="integration-list">
+                <div>
+                  <strong>Bunny Stream</strong>
+                  <span>Uploads, project collections, streaming embeds.</span>
+                </div>
+                <div>
+                  <strong>Vimeo</strong>
+                  <span>Uploads, unlisted review embeds, project folders.</span>
+                </div>
+                <div>
+                  <strong>Resend</strong>
+                  <span>Clean client invite and update emails.</span>
+                </div>
+              </div>
+            </section>`
+          : ""
+      }
     </div>
   `;
 
@@ -3989,7 +4003,7 @@ function openDialog(intent = createIntent) {
       ["label", "Version label", "Version 4"],
       ["provider", "Provider", "Bunny Stream", "select"],
       ["file", "Video file", ""],
-      ["note", "Version note", "Updated music and end card."],
+      ["note", "Client comment", "What changed in this version?"],
     ],
   };
 

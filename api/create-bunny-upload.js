@@ -1,12 +1,85 @@
 const crypto = require("node:crypto");
 
+const supabaseUrl = process.env.SUPABASE_URL || "https://axvnifoamejuxxqhezwr.supabase.co";
+const supabasePublishableKey =
+  process.env.SUPABASE_PUBLISHABLE_KEY || "sb_publishable_IFOVI5nvp8DdOeqAs4lNsg__Iewd4BN";
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+const firstAdminEmail = "henry@createwithvalidate.com";
+
 function sendJson(response, statusCode, body) {
   response.statusCode = statusCode;
   response.setHeader("Content-Type", "application/json");
   response.setHeader("Access-Control-Allow-Origin", "*");
-  response.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  response.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   response.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   response.end(JSON.stringify(body));
+}
+
+function makeHttpError(statusCode, message) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
+}
+
+function authToken(request) {
+  const header = request.headers.authorization || request.headers.Authorization || "";
+  const match = String(header).match(/^Bearer\s+(.+)$/i);
+  return match ? match[1] : "";
+}
+
+async function supabaseFetch(path, { token, serviceRole = false } = {}) {
+  const key = serviceRole ? supabaseServiceRoleKey : supabasePublishableKey;
+  const supabaseResponse = await fetch(`${supabaseUrl}${path}`, {
+    headers: {
+      Accept: "application/json",
+      apikey: key,
+      Authorization: `Bearer ${serviceRole ? supabaseServiceRoleKey : token}`,
+    },
+  });
+  const data = await supabaseResponse.json().catch(() => null);
+  if (!supabaseResponse.ok) {
+    const message = data?.message || data?.error_description || data?.error || "Supabase request failed";
+    throw makeHttpError(supabaseResponse.status, message);
+  }
+  return data || [];
+}
+
+async function getUser(token) {
+  return supabaseFetch("/auth/v1/user", { token });
+}
+
+async function getRows(table, params) {
+  return supabaseFetch(`/rest/v1/${table}?${params.toString()}`, { serviceRole: true });
+}
+
+async function requireAdmin(request) {
+  if (!supabaseServiceRoleKey) {
+    throw makeHttpError(500, "Missing SUPABASE_SERVICE_ROLE_KEY in Vercel.");
+  }
+
+  const token = authToken(request);
+  if (!token) {
+    throw makeHttpError(401, "Sign in again before uploading a video.");
+  }
+
+  const user = await getUser(token);
+  const userEmail = String(user?.email || "").toLowerCase();
+  if (!user?.id || !userEmail) {
+    throw makeHttpError(401, "Could not verify this admin account.");
+  }
+
+  const profileParams = new URLSearchParams({
+    select: "role,email",
+    id: `eq.${user.id}`,
+    limit: "1",
+  });
+  const [profile] = await getRows("profiles", profileParams);
+  const isAdmin = profile?.role === "admin" || userEmail === firstAdminEmail;
+  if (!isAdmin) {
+    throw makeHttpError(403, "Only admins can upload videos.");
+  }
+
+  return user;
 }
 
 async function parseRequestBody(request) {
@@ -73,6 +146,13 @@ module.exports = async function handler(request, response) {
 
   const apiKey = process.env.BUNNY_STREAM_API_KEY;
   const libraryId = process.env.BUNNY_STREAM_LIBRARY_ID;
+
+  try {
+    await requireAdmin(request);
+  } catch (error) {
+    sendJson(response, error.statusCode || 502, { error: error.message || "Upload is not allowed." });
+    return;
+  }
 
   if (!apiKey || !libraryId) {
     sendJson(response, 500, {

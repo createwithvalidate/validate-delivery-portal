@@ -103,11 +103,12 @@ button:disabled {
   background-size: cover;
   filter: saturate(1.12) contrast(1.06) brightness(0.94);
   opacity: 0;
-  transform: scale(1.05);
-  will-change: opacity, transform;
+  transform: translate3d(0, 0, 0) scale(1.045);
+  backface-visibility: hidden;
+  will-change: opacity;
   transition:
-    opacity 1600ms ease,
-    transform 9000ms ease;
+    opacity 2200ms ease-in-out,
+    transform 8200ms ease-out;
 }
 
 .bg-photo-wide {
@@ -177,7 +178,7 @@ button:disabled {
 .login-screen[data-bg-index="7"] .bg-photo-lake,
 .login-screen[data-bg-index="8"] .bg-photo-christmas {
   opacity: 0.96;
-  transform: scale(1);
+  transform: translate3d(0, 0, 0) scale(1.012);
 }
 
 .login-screen::before {
@@ -2559,5 +2560,21 @@ label {
 
   .hero-band h2 {
     font-size: 2.4rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .new-project-dot {
+    animation: none;
+    opacity: 1;
   }
 }
