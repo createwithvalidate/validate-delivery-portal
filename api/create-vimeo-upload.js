@@ -138,8 +138,9 @@ module.exports = async function handler(request, response) {
       name: title,
       ...(folder?.uri ? { folder_uri: folder.uri } : {}),
       privacy: {
-        // Vimeo's "Private" setting: only the owner and people with Vimeo access can view.
-        view: "nobody",
+        // Vimeo "Private" requires Vimeo account access. Unlisted stays off public Vimeo
+        // surfaces while still allowing client review embeds to play in the portal.
+        view: "unlisted",
       },
       upload: {
         approach: "tus",

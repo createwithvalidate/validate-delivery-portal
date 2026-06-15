@@ -3400,7 +3400,7 @@ function renderSettings() {
           </div>
           <div>
             <strong>Vimeo</strong>
-            <span>Uploads, private videos, project folders.</span>
+            <span>Uploads, unlisted review embeds, project folders.</span>
           </div>
           <div>
             <strong>Resend</strong>
