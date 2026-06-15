@@ -2120,7 +2120,6 @@ async function shareProjectFromForm(form, button) {
     return emails.includes(email) && canSendSmsToAccount(account);
   });
   const previousEmails = projectRecipientEmails(project?.id);
-  const previousSmsEmails = projectSmsRecipientEmails(project?.id);
 
   if (!emails.length && !previousEmails.length) {
     throw new Error("Choose at least one client account before sharing");
@@ -2140,61 +2139,14 @@ async function shareProjectFromForm(form, button) {
     state.deliveredProjectIds = state.deliveredProjectIds.filter((id) => id !== project.id);
   }
 
-  const previousSet = new Set(previousEmails);
-  const newlyAddedEmails = emails.filter((email) => !previousSet.has(email));
-  const previousSmsSet = new Set(previousSmsEmails);
-  const newlySmsEnabledEmails = smsEmails.filter((email) => !previousSmsSet.has(email));
-
   button.textContent = "Saving access...";
   await savePortalData();
   await replaceProjectAccessInSupabase(project.id);
   if (emails.length) await verifyProjectInviteAccess({ project, emails });
 
-  if (newlyAddedEmails.length) {
-    button.textContent = "Sending invite...";
-    const video = projectVideos(project.id)[0];
-    await emailProjectClient({
-      client: {
-        name:
-          newlyAddedEmails.length === 1
-            ? accountNameForEmail(newlyAddedEmails[0])
-            : `${newlyAddedEmails.length} client accounts`,
-        contact: newlyAddedEmails.length === 1 ? accountNameForEmail(newlyAddedEmails[0]) : "Client team",
-        email: newlyAddedEmails.join(","),
-      },
-      project,
-      video,
-      version: video ? latestVersion(video.id) : null,
-      emails: newlyAddedEmails,
-      emailType: "invite",
-    });
-  }
-
-  let smsError = "";
-  if (newlySmsEnabledEmails.length) {
-    button.textContent = "Sending SMS...";
-    const video = projectVideos(project.id)[0];
-    try {
-      await smsProjectClient({
-        project,
-        video,
-        version: video ? latestVersion(video.id) : null,
-        emails: newlySmsEnabledEmails,
-        smsType: "invite",
-      });
-    } catch (error) {
-      smsError = error.message || "SMS could not be sent yet";
-    }
-  }
-
   state.activity.unshift(`Updated client access for ${project.name}`);
   await savePortalData();
-  return {
-    selectedCount: emails.length,
-    invitedCount: newlyAddedEmails.length,
-    smsCount: smsError ? 0 : newlySmsEnabledEmails.length,
-    smsError,
-  };
+  return { selectedCount: emails.length, smsCount: smsEmails.length };
 }
 
 async function saveProjectAdminsFromForm(form, button) {
@@ -3910,9 +3862,9 @@ function openProjectShareDialog() {
   dialogTitle.textContent = isShared ? "Project clients" : "Share project";
   dialogSubtitle.hidden = false;
   dialogSubtitle.textContent = isShared
-    ? "Add or remove client accounts for this project. Choose SMS only for clients who added a phone number."
-    : "Choose the client accounts that should see this project. Email is sent by default; SMS is optional.";
-  createSubmit.textContent = isShared ? "Save clients" : "Send invite";
+    ? "Add or remove client access. Nothing sends until you press Notify clients."
+    : "Choose who can see this project. Nothing sends until you press Notify clients.";
+  createSubmit.textContent = "Save access";
   createSubmit.disabled = false;
   document.querySelector("#cancelDialog").textContent = "Cancel";
   dialogFields.innerHTML = `
@@ -4123,12 +4075,12 @@ async function handleCreateFormSubmit(event) {
       const shareResult = await shareProjectFromForm(form, saveButton);
       dialog.close();
       createForm.reset();
-      const shareMessage = shareResult.invitedCount
-        ? `Invited ${shareResult.invitedCount} new client${shareResult.invitedCount === 1 ? "" : "s"}${shareResult.smsCount ? ` / ${shareResult.smsCount} SMS` : ""}`
-        : shareResult.selectedCount
-          ? `Project access saved for ${shareResult.selectedCount} client${shareResult.selectedCount === 1 ? "" : "s"}${shareResult.smsCount ? ` / ${shareResult.smsCount} SMS` : ""}`
-          : "Project client access cleared";
-      showToast(shareResult.smsError ? `${shareMessage}. SMS needs setup: ${shareResult.smsError}` : shareMessage);
+      const shareMessage = shareResult.selectedCount
+        ? `Project access saved for ${shareResult.selectedCount} client${shareResult.selectedCount === 1 ? "" : "s"}${
+            shareResult.smsCount ? ` / ${shareResult.smsCount} SMS-ready` : ""
+          }. Press Notify clients when you are ready.`
+        : "Project client access cleared";
+      showToast(shareMessage);
       renderProjectDetail();
       return;
     }

@@ -37,6 +37,10 @@ function normalizePhone(value = "") {
   return `+${digits}`;
 }
 
+function normalizeEmail(value = "") {
+  return String(value).trim().toLowerCase();
+}
+
 async function parseRequestBody(request) {
   if (request.body && typeof request.body !== "string") return request.body;
   if (typeof request.body === "string") return JSON.parse(request.body || "{}");
@@ -76,6 +80,11 @@ async function getUser(token) {
 
 async function getRows(table, params) {
   return supabaseFetch(`/rest/v1/${table}?${params.toString()}`, { serviceRole: true });
+}
+
+async function getAuthUsers() {
+  const result = await supabaseFetch("/auth/v1/admin/users?per_page=1000", { serviceRole: true });
+  return Array.isArray(result?.users) ? result.users : [];
 }
 
 function buildSmsBody(payload) {
@@ -178,18 +187,39 @@ module.exports = async function handler(request, response) {
       email: `ilike.${clientEmail}`,
       limit: "1",
     });
-    const [clientProfile] = await getRows("profiles", clientParams);
-    if (!clientProfile) {
+    let clientProfile;
+    try {
+      [clientProfile] = await getRows("profiles", clientParams);
+    } catch (error) {
+      const message = error.message?.toLowerCase?.() || "";
+      if (!["phone_number", "sms_opt_in", "sms_opted_out"].some((field) => message.includes(field))) {
+        throw error;
+      }
+      const fallbackParams = new URLSearchParams({
+        select: "email,full_name",
+        email: `ilike.${clientEmail}`,
+        limit: "1",
+      });
+      [clientProfile] = await getRows("profiles", fallbackParams);
+    }
+
+    const authUsers = await getAuthUsers().catch(() => []);
+    const authUser = authUsers.find((item) => normalizeEmail(item.email) === clientEmail);
+    if (!clientProfile && !authUser) {
       sendJson(response, 404, { error: "Client account was not found." });
       return;
     }
 
-    if (!clientProfile.phone_number || !clientProfile.sms_opt_in || clientProfile.sms_opted_out) {
+    const phoneNumber = normalizePhone(clientProfile?.phone_number || authUser?.user_metadata?.phone_number || "");
+    const smsOptIn = Boolean(clientProfile?.sms_opt_in || authUser?.user_metadata?.sms_opt_in);
+    const smsOptedOut = Boolean(clientProfile?.sms_opted_out);
+
+    if (!phoneNumber || !smsOptIn || smsOptedOut) {
       sendJson(response, 400, { error: "This client has not enabled SMS notifications." });
       return;
     }
 
-    const to = normalizePhone(clientProfile.phone_number);
+    const to = phoneNumber;
     const body = buildSmsBody(payload);
     const result = await sendTwilioSms({ to, body });
     sendJson(response, 200, { ok: true, id: result.sid, to });

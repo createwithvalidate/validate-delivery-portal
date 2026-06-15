@@ -44,6 +44,19 @@ async function getRows(table, params) {
   return supabaseFetch(`/rest/v1/${table}?${params.toString()}`, { serviceRole: true });
 }
 
+function normalizeEmail(value = "") {
+  return String(value).trim().toLowerCase();
+}
+
+function normalizePhone(value = "") {
+  return String(value).trim().replace(/[^\d+]/g, "");
+}
+
+async function getAuthUsers() {
+  const result = await supabaseFetch("/auth/v1/admin/users?per_page=1000", { serviceRole: true });
+  return Array.isArray(result?.users) ? result.users : [];
+}
+
 module.exports = async function handler(request, response) {
   if (request.method === "OPTIONS") {
     sendJson(response, 200, { ok: true });
@@ -106,16 +119,26 @@ module.exports = async function handler(request, response) {
       accounts = await getRows("profiles", fallbackParams);
     }
 
+    const authUsers = await getAuthUsers().catch(() => []);
+    const authByEmail = new Map(
+      authUsers.map((authUser) => [normalizeEmail(authUser.email), authUser]),
+    );
+
     sendJson(response, 200, {
       accounts: accounts.map((account) => ({
         id: account.id,
         email: account.email,
-        fullName: account.full_name || account.email,
+        fullName:
+          account.full_name ||
+          authByEmail.get(normalizeEmail(account.email))?.user_metadata?.full_name ||
+          account.email,
         role: account.role,
         createdAt: account.created_at,
-        avatarUrl: account.avatar_url || "",
-        phoneNumber: account.phone_number || "",
-        smsOptIn: Boolean(account.sms_opt_in),
+        avatarUrl: account.avatar_url || authByEmail.get(normalizeEmail(account.email))?.user_metadata?.avatar_url || "",
+        phoneNumber: normalizePhone(
+          account.phone_number || authByEmail.get(normalizeEmail(account.email))?.user_metadata?.phone_number || "",
+        ),
+        smsOptIn: Boolean(account.sms_opt_in || authByEmail.get(normalizeEmail(account.email))?.user_metadata?.sms_opt_in),
         smsOptedOut: Boolean(account.sms_opted_out),
       })),
     });
