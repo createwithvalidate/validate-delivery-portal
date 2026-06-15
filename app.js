@@ -2441,7 +2441,7 @@ async function offerProcessingWait({ provider, videoId, button }) {
     status = await fetchVideoProcessingStatus({ provider, videoId });
   } catch (error) {
     const proceed = window.confirm(
-      `${provider} has the file, but processing status could not be checked. The video may need a few minutes before it plays. Press OK to save it now, or Cancel to stop here.`,
+      `Could not check processing yet.\n\nOK saves now. Cancel stops here.`,
     );
     if (!proceed) throw error;
     return;
@@ -2453,7 +2453,7 @@ async function offerProcessingWait({ provider, videoId, button }) {
   }
 
   const shouldWait = window.confirm(
-    `${provider} has the upload, but it may still be processing. Videos might not play or show thumbnails until that finishes.\n\nPress OK to wait here for it to finish, or Cancel to save the version now.`,
+    `Video is still processing.\n\nOK waits. Cancel saves now.`,
   );
   if (!shouldWait) return;
 
@@ -2463,14 +2463,12 @@ async function offerProcessingWait({ provider, videoId, button }) {
     status = await fetchVideoProcessingStatus({ provider, videoId });
     if (status.error) throw new Error(status.message || `${provider} reported a processing problem.`);
     if (status.ready) {
-      window.alert("Video processing is done. Click OK to save this version.");
+      window.alert("Video is ready.");
       return;
     }
   }
 
-  window.alert(
-    "The video is still processing. Click OK to save the version now. If it does not play right away, give Bunny or Vimeo a few more minutes and refresh.",
-  );
+  window.alert("Still processing. Saving now.");
 }
 
 function render() {
@@ -2695,7 +2693,6 @@ function renderProjectDetail() {
         <p class="eyebrow">Delivery</p>
         <button class="primary-button" id="deliveryPrimary">${deliveryButtonLabel}</button>
         <p class="muted">${sendStatus}</p>
-        ${isShared ? renderUnopenedNotice(latestStatus) : ""}
         <div class="access-block">
           <div class="access-block-head">
             <span>Clients in project</span>
