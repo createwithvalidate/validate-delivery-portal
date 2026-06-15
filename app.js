@@ -2346,7 +2346,7 @@ function renderProjectDetail() {
   const deliveryButtonLabel = !isShared ? "Share project" : unopenedEmails.length ? "Send reminder" : "Notify clients";
   setPageHeader(project.name);
   document.querySelector("#openCreate").textContent = "Add video";
-  document.querySelector("#openCreate").hidden = state.session?.role !== "admin";
+  document.querySelector("#openCreate").hidden = true;
   if (deleteClientAction) {
     deleteClientAction.hidden = state.session?.role !== "admin";
     deleteClientAction.dataset.projectId = project.id;
@@ -2366,7 +2366,7 @@ function renderProjectDetail() {
                 <h3>Videos</h3>
               </div>
               <div class="media-head-actions">
-                <button class="ghost-button small-action" id="addVideo">Add video</button>
+                <button class="primary-button small-action" id="addVideo">Add video</button>
               </div>
             </div>
             ${renderVideoCardGrid({ videos, dataAttribute: "data-video", actionLabel: "Open" })}
@@ -2378,7 +2378,7 @@ function renderProjectDetail() {
                 <h3>Images</h3>
               </div>
               <div class="media-head-actions">
-                <button class="ghost-button small-action" id="addImage">Add image</button>
+                <button class="primary-button small-action" id="addImage">Add image</button>
               </div>
             </div>
             ${renderProjectImageGrid(images, { emptyText: "No images yet." })}
