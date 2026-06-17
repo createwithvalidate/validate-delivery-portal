@@ -431,7 +431,8 @@ function fallbackProfileForUser(user) {
 }
 
 function applyAccountSession(user, profile) {
-  const role = profile?.role === "admin" ? "admin" : "client";
+  const isFirstAdmin = normalizeEmail(user.email) === normalizeEmail(firstAdminEmail);
+  const role = isFirstAdmin || profile?.role === "admin" ? "admin" : "client";
   const avatarUrl = profile?.avatar_url || user.user_metadata?.avatar_url || "";
   const phoneNumber = normalizePhone(profile?.phone_number || user.user_metadata?.phone_number || "");
   const smsOptIn = Boolean(profile?.sms_opt_in ?? user.user_metadata?.sms_opt_in);
