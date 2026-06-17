@@ -1359,20 +1359,13 @@ function showPortalPrompt({
   });
 }
 
-function renderNotifySummary({ project, video, version, emails = [] }) {
+function renderNotifySummary({ project, video, version }) {
   const note = version?.note?.trim();
-  const names = emails.map((email) => accountNameForEmail(email) || email);
-  const recipientLabel =
-    names.length === 1
-      ? names[0]
-      : names.length === 2
-        ? names.join(" and ")
-        : `${names.slice(0, 2).join(", ")} and ${names.length - 2} more`;
 
   return `
     <div class="confirm-summary">
       <p>
-        Email <strong>${escapeHtml(recipientLabel)}</strong> about
+        Clients will be notified about
         <strong>${escapeHtml(version?.label || "the latest version")}</strong>
         of <strong>${escapeHtml(video?.title || project?.name || "this video")}</strong>
         in <strong>${escapeHtml(project?.name || "this project")}</strong>.
@@ -2385,7 +2378,7 @@ async function notifyProjectRecipients(button, targetEmails = null) {
   const confirmed = await showPortalPrompt({
     eyebrow: "Notify clients",
     title: "Send this update?",
-    html: renderNotifySummary({ project, video, version, emails }),
+    html: renderNotifySummary({ project, video, version }),
     confirmText: "Notify clients",
     cancelText: "Cancel",
   });
