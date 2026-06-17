@@ -3266,7 +3266,11 @@ function renderReviewShell(isAdmin) {
             version
               ? `<div class="inline-actions">
                   <span class="provider-pill">${version.provider || "Video"}</span>
-                  <span class="status-pill ${summary.hasApproval ? "approved" : ""}">${escapeHtml(versionReviewLabel(version, project))}</span>
+                  ${
+                    isAdmin
+                      ? `<span class="status-pill ${summary.hasApproval ? "approved" : ""}">${escapeHtml(versionReviewLabel(version, project))}</span>`
+                      : ""
+                  }
                 </div>`
               : ""
           }
@@ -3308,7 +3312,11 @@ function renderReviewShell(isAdmin) {
                                   <strong>${item.label}</strong>
                                   <small>${item.createdAt}</small>
                                 </span>
-                                <span class="status-pill ${reviewSummaryForVersion(item, project).hasApproval ? "approved" : ""}">${escapeHtml(versionReviewLabel(item, project))}</span>
+                                ${
+                                  isAdmin
+                                    ? `<span class="status-pill ${reviewSummaryForVersion(item, project).hasApproval ? "approved" : ""}">${escapeHtml(versionReviewLabel(item, project))}</span>`
+                                    : ""
+                                }
                               </button>
                             `,
                           )

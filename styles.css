@@ -2365,8 +2365,8 @@ textarea {
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 10px;
   background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.014)),
-    rgba(12, 12, 14, 0.58);
+    linear-gradient(145deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.02)),
+    rgba(18, 18, 20, 0.64);
 }
 
 .confirm-summary-kicker {
