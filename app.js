@@ -1782,9 +1782,7 @@ function renderVideoThumbnail({ version, title }) {
   const thumbnailUrl = videoThumbnailUrl(version);
   if (!thumbnailUrl) {
     return `
-      <span class="video-thumb is-empty">
-        <span>No thumbnail yet</span>
-      </span>
+      <span class="video-thumb is-empty"></span>
     `;
   }
 
@@ -1829,7 +1827,7 @@ function renderVideoCardGrid({
                 <span class="video-card-body">
                   <span>
                     <strong class="video-card-title">${escapeHtml(video.title)}</strong>
-                    <span class="muted">${version ? `Latest: ${escapeHtml(version.label)}` : "Add first version."}</span>
+                    ${version ? `<span class="muted">Latest: ${escapeHtml(version.label)}</span>` : ""}
                   </span>
                   ${
                     versions.length || noteCount

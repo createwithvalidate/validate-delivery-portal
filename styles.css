@@ -1314,7 +1314,7 @@ button:disabled {
 }
 
 .video-thumb.is-empty > span {
-  display: block;
+  display: none;
 }
 
 .video-card-body {
