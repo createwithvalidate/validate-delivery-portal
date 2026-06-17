@@ -695,7 +695,7 @@ button:disabled {
 
 .topbar.client-title-card h1 {
   order: 1;
-  font-size: clamp(2.45rem, 4.4vw, 5rem);
+  font-size: clamp(2rem, 3.2vw, 3.65rem);
 }
 
 .topbar-actions,
@@ -802,18 +802,18 @@ button:disabled {
 }
 
 .hero-band.admin-hero {
-  min-height: 142px;
-}
-
-.hero-band.client-hero {
   min-height: 118px;
   background:
     linear-gradient(135deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.012)),
     #09090a;
 }
 
-.hero-band.client-hero .dashboard-photo-grid {
+.hero-band.admin-hero .dashboard-photo-grid {
   display: none;
+}
+
+.hero-band.client-hero {
+  min-height: 142px;
 }
 
 .dashboard-photo-grid {
