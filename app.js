@@ -77,6 +77,12 @@ const deleteClientAction = document.querySelector("#deleteClientAction");
 const sessionName = document.querySelector("#sessionName");
 const sessionEmail = document.querySelector("#sessionEmail");
 const toast = document.querySelector("#toast");
+const confirmOverlay = document.querySelector("#confirmOverlay");
+const confirmEyebrow = document.querySelector("#confirmEyebrow");
+const confirmTitle = document.querySelector("#confirmTitle");
+const confirmMessage = document.querySelector("#confirmMessage");
+const confirmAccept = document.querySelector("#confirmAccept");
+const confirmCancel = document.querySelector("#confirmCancel");
 
 let route = state.route || "clients";
 let currentView = state.currentView || "clients";
@@ -93,6 +99,7 @@ let syncPaused = false;
 let isSavingCreateForm = false;
 let lastPortalFingerprint = "";
 let authListenerReady = false;
+let confirmHideTimer = null;
 const loginBackgroundCount = 9;
 const dashboardBackgroundCount = 5;
 const loginReelSources = [
@@ -142,6 +149,15 @@ function formatTimestamp(value, fallback = "") {
 
 function freshTimestampLabel() {
   return formatTimestamp(new Date().toISOString());
+}
+
+function idTimestampValue(id = "") {
+  const match = String(id || "").match(/-(\d{10,})$/);
+  return match ? Number(match[1]) : 0;
+}
+
+function mediaTimestampValue(item = {}) {
+  return timestampValue(item.createdAtRaw || item.createdAt) || idTimestampValue(item.id);
 }
 
 function normalizePhone(value = "") {
@@ -1286,6 +1302,60 @@ function showToast(message) {
   window.setTimeout(() => toast.classList.remove("show"), 4200);
 }
 
+function showPortalPrompt({
+  eyebrow = "Confirm",
+  title = "Are you sure?",
+  message = "",
+  confirmText = "Continue",
+  cancelText = "Cancel",
+  danger = false,
+  showCancel = true,
+} = {}) {
+  if (!confirmOverlay || !confirmAccept || !confirmCancel) {
+    return Promise.resolve(!showCancel);
+  }
+
+  return new Promise((resolve) => {
+    if (confirmHideTimer) {
+      window.clearTimeout(confirmHideTimer);
+      confirmHideTimer = null;
+    }
+    confirmEyebrow.textContent = eyebrow;
+    confirmTitle.textContent = title;
+    confirmMessage.textContent = message;
+    confirmAccept.textContent = confirmText;
+    confirmCancel.textContent = cancelText;
+    confirmCancel.hidden = !showCancel;
+    confirmAccept.classList.toggle("danger-confirm", danger);
+    confirmOverlay.hidden = false;
+
+    const cleanup = (result) => {
+      confirmOverlay.classList.remove("show");
+      confirmAccept.onclick = null;
+      confirmCancel.onclick = null;
+      confirmOverlay.onclick = null;
+      confirmHideTimer = window.setTimeout(() => {
+        confirmOverlay.hidden = true;
+        confirmCancel.hidden = false;
+        confirmAccept.classList.remove("danger-confirm");
+        confirmHideTimer = null;
+      }, 160);
+      resolve(result);
+    };
+
+    confirmAccept.onclick = () => cleanup(true);
+    confirmCancel.onclick = () => cleanup(false);
+    confirmOverlay.onclick = (event) => {
+      if (event.target === confirmOverlay && showCancel) cleanup(false);
+    };
+
+    requestAnimationFrame(() => {
+      confirmOverlay.classList.add("show");
+      confirmAccept.focus();
+    });
+  });
+}
+
 function upsertById(collection, item) {
   const index = collection.findIndex((entry) => entry.id === item.id);
   if (index >= 0) collection[index] = { ...collection[index], ...item };
@@ -1317,28 +1387,6 @@ function currentCommentAuthor(isAdmin) {
   return account?.contact || account?.name || state.clientAccount?.name || state.session?.email || "Client";
 }
 
-function currentAvatarUrl() {
-  return state.session?.avatarUrl || state.clientAccount?.avatarUrl || "";
-}
-
-function avatarForComment(comment = {}) {
-  if (comment.avatarUrl) return comment.avatarUrl;
-  const normalizedAuthor = normalizeEmail(comment.author);
-  const sessionEmail = normalizeEmail(state.session?.email);
-  const sessionName = String(state.session?.name || "").trim().toLowerCase();
-  const authorName = String(comment.author || "").trim().toLowerCase();
-  if (
-    currentAvatarUrl() &&
-    (normalizedAuthor === sessionEmail || (sessionName && authorName === sessionName))
-  ) {
-    return currentAvatarUrl();
-  }
-  const account = (state.accountDirectory || []).find((item) => {
-    return normalizeEmail(item.email) === normalizedAuthor || String(item.fullName || "").trim().toLowerCase() === authorName;
-  });
-  return account?.avatarUrl || "";
-}
-
 function avatarInitials(name = "") {
   const parts = String(name || "V")
     .trim()
@@ -1351,15 +1399,11 @@ function avatarInitials(name = "") {
     .toUpperCase();
 }
 
-function renderAvatar(name, imageUrl = "") {
+function renderAvatar(name) {
   const initials = avatarInitials(name);
   return `
-    <div class="avatar ${imageUrl ? "has-image" : ""}">
-      ${
-        imageUrl
-          ? `<img src="${escapeHtml(imageUrl)}" alt="" onerror="this.remove(); this.closest('.avatar')?.classList.remove('has-image');" /><span>${escapeHtml(initials)}</span>`
-          : `<span>${escapeHtml(initials)}</span>`
-      }
+    <div class="avatar">
+      <span>${escapeHtml(initials)}</span>
     </div>
   `;
 }
@@ -1424,7 +1468,6 @@ function makeReviewEventComment({ versionId, type }) {
     })}`,
     createdAt: freshTimestampLabel(),
     createdAtRaw: at,
-    avatarUrl: currentAvatarUrl(),
   };
 }
 
@@ -1657,21 +1700,27 @@ function activeVideo() {
 }
 
 function latestVersion(videoId = activeVideo()?.id) {
-  return state.versions.find((version) => version.videoId === videoId);
+  return videoVersions(videoId)[0];
 }
 
 function projectVideos(projectId) {
   if (!projectId) return [];
-  return state.videos.filter((video) => video.projectId === projectId && video.status !== "image");
+  return state.videos
+    .filter((video) => video.projectId === projectId && video.status !== "image")
+    .sort((a, b) => mediaTimestampValue(b) - mediaTimestampValue(a));
 }
 
 function projectImages(projectId) {
   if (!projectId) return [];
-  return state.videos.filter((video) => video.projectId === projectId && video.status === "image");
+  return state.videos
+    .filter((video) => video.projectId === projectId && video.status === "image")
+    .sort((a, b) => mediaTimestampValue(b) - mediaTimestampValue(a));
 }
 
 function videoVersions(videoId) {
-  return state.versions.filter((version) => version.videoId === videoId);
+  return state.versions
+    .filter((version) => version.videoId === videoId)
+    .sort((a, b) => mediaTimestampValue(b) - mediaTimestampValue(a));
 }
 
 function bunnyVideoIdFromEmbedUrl(embedUrl = "") {
@@ -1925,9 +1974,20 @@ async function openReviewFromHash({ showMissingMessage = false, reload = true } 
 async function deleteClient(clientId) {
   const client = state.clients.find((item) => item.id === clientId);
   if (!client) return;
-  const confirmed = window.confirm(`Delete ${client.name} and all of its projects?`);
+  const confirmed = await showPortalPrompt({
+    title: `Delete ${client.name}?`,
+    message: "This will remove the client workspace and all projects inside it.",
+    confirmText: "Delete client",
+    danger: true,
+  });
   if (!confirmed) return;
-  const veryConfirmed = window.confirm(`Are you very sure? This permanently deletes ${client.name}, its projects, videos, versions, comments, and client access.`);
+  const veryConfirmed = await showPortalPrompt({
+    eyebrow: "Final check",
+    title: "Are you very sure?",
+    message: `This permanently deletes ${client.name}, its projects, videos, versions, comments, and client access.`,
+    confirmText: "Yes, delete permanently",
+    danger: true,
+  });
   if (!veryConfirmed) return;
 
   const projectIds = state.projects.filter((project) => project.clientId === clientId).map((project) => project.id);
@@ -1966,9 +2026,20 @@ async function deleteClient(clientId) {
 async function deleteProject(projectId) {
   const project = state.projects.find((item) => item.id === projectId);
   if (!project) return;
-  const confirmed = window.confirm(`Delete ${project.name}?`);
+  const confirmed = await showPortalPrompt({
+    title: `Delete ${project.name}?`,
+    message: "This will remove the project from admin and client dashboards.",
+    confirmText: "Delete project",
+    danger: true,
+  });
   if (!confirmed) return;
-  const veryConfirmed = window.confirm(`Are you very sure? This permanently deletes ${project.name}, its videos, versions, comments, images, and client access.`);
+  const veryConfirmed = await showPortalPrompt({
+    eyebrow: "Final check",
+    title: "Are you very sure?",
+    message: `This permanently deletes ${project.name}, its videos, versions, comments, images, and client access.`,
+    confirmText: "Yes, delete permanently",
+    danger: true,
+  });
   if (!veryConfirmed) return;
 
   const videoIds = state.videos.filter((video) => video.projectId === projectId).map((video) => video.id);
@@ -2002,7 +2073,12 @@ async function deleteProject(projectId) {
 async function deleteVideo(videoId) {
   const video = state.videos.find((item) => item.id === videoId && item.status !== "image");
   if (!video) return;
-  const confirmed = window.confirm(`Remove ${video.title} and all of its versions and comments?`);
+  const confirmed = await showPortalPrompt({
+    title: `Remove ${video.title}?`,
+    message: "This removes the video, every version inside it, and the comments attached to those versions.",
+    confirmText: "Remove video",
+    danger: true,
+  });
   if (!confirmed) return;
 
   const versionIds = state.versions.filter((version) => version.videoId === videoId).map((version) => version.id);
@@ -2032,7 +2108,12 @@ async function deleteVideo(videoId) {
 async function deleteImage(imageId) {
   const image = state.videos.find((item) => item.id === imageId && item.status === "image");
   if (!image) return;
-  const confirmed = window.confirm(`Remove ${image.title}?`);
+  const confirmed = await showPortalPrompt({
+    title: `Remove ${image.title}?`,
+    message: "This removes the image from this project.",
+    confirmText: "Remove image",
+    danger: true,
+  });
   if (!confirmed) return;
 
   state.videos = state.videos.filter((item) => item.id !== imageId);
@@ -2539,9 +2620,13 @@ async function offerProcessingWait({ provider, videoId, button }) {
     button.textContent = "Checking processing...";
     status = await fetchVideoProcessingStatus({ provider, videoId });
   } catch (error) {
-    const proceed = window.confirm(
-      `Could not check processing yet.\n\nOK saves now. Cancel stops here.`,
-    );
+    const proceed = await showPortalPrompt({
+      eyebrow: "Processing",
+      title: "Could not check processing yet.",
+      message: "You can save this version now, or stop here and try again.",
+      confirmText: "Save now",
+      cancelText: "Stop",
+    });
     if (!proceed) throw error;
     return;
   }
@@ -2551,9 +2636,13 @@ async function offerProcessingWait({ provider, videoId, button }) {
     throw new Error(status.message || `${provider} reported a processing problem.`);
   }
 
-  const shouldWait = window.confirm(
-    `Video is still processing.\n\nOK waits. Cancel saves now.`,
-  );
+  const shouldWait = await showPortalPrompt({
+    eyebrow: "Processing",
+    title: "Video is still processing.",
+    message: "You can wait here for the provider to finish, or save now. It may not play or show thumbnails until processing is done.",
+    confirmText: "Wait here",
+    cancelText: "Save now",
+  });
   if (!shouldWait) return;
 
   for (let attempt = 1; attempt <= 30; attempt += 1) {
@@ -2562,12 +2651,24 @@ async function offerProcessingWait({ provider, videoId, button }) {
     status = await fetchVideoProcessingStatus({ provider, videoId });
     if (status.error) throw new Error(status.message || `${provider} reported a processing problem.`);
     if (status.ready) {
-      window.alert("Video is ready.");
+      await showPortalPrompt({
+        eyebrow: "Ready",
+        title: "Video is ready.",
+        message: "Processing finished and the version can be saved.",
+        confirmText: "OK",
+        showCancel: false,
+      });
       return;
     }
   }
 
-  window.alert("Still processing. Saving now.");
+  await showPortalPrompt({
+    eyebrow: "Processing",
+    title: "Still processing.",
+    message: "Saving this version now. It should become playable shortly after the provider finishes processing.",
+    confirmText: "OK",
+    showCancel: false,
+  });
 }
 
 function render() {
@@ -2869,14 +2970,15 @@ function renderClientDashboard() {
                 .map((project) => {
                   const videos = projectVideos(project.id);
                   const images = projectImages(project.id);
-                  const versions = videos.flatMap((video) => videoVersions(video.id));
+                  const versions = videos
+                    .flatMap((video) => videoVersions(video.id))
+                    .sort((a, b) => mediaTimestampValue(b) - mediaTimestampValue(a));
                   const latest = versions[0];
-                  const approvedCount = versions.filter((version) => version.approved).length;
                   const hasUnseenLatest = Boolean(latest && !clientReviewEvent(latest.id, "seen"));
                   return `
                     <article class="card client-project-card ${hasUnseenLatest ? "has-unseen-latest" : ""}">
                       ${hasUnseenLatest ? `<span class="new-project-dot" aria-label="New update"></span>` : ""}
-                      <p class="eyebrow">${project.status}</p>
+                      <p class="eyebrow">Project</p>
                       <h3>${project.name}</h3>
                       <p>${project.description || "Review files and comments for this project."}</p>
                       ${renderMetaStrip([
@@ -2885,7 +2987,7 @@ function renderClientDashboard() {
                         { show: images.length > 0, label: `${images.length} image${images.length === 1 ? "" : "s"}` },
                       ])}
                       <div class="card-footer">
-                        <span class="metric">${latest?.approved ? "approved" : approvedCount ? `${approvedCount} approved` : "in review"}</span>
+                        <span class="metric">${latest ? `Latest: ${escapeHtml(latest.label)}` : "Project"}</span>
                         <button class="ghost-button" data-client-project="${project.id}" ${videos.length || images.length ? "" : "disabled"}>
                           ${videos.length || images.length ? "Open project" : "No media yet"}
                         </button>
@@ -3229,7 +3331,7 @@ function renderReviewShell(isAdmin) {
                         .map(
                           (comment) => `
                             <div class="comment-row">
-                              ${renderAvatar(comment.author, avatarForComment(comment))}
+                              ${renderAvatar(comment.author)}
                               <div>
                                 <strong>${escapeHtml(comment.author)}</strong>
                                 <span class="muted"> ${escapeHtml(comment.createdAt)}</span>
@@ -3294,7 +3396,6 @@ function renderReviewShell(isAdmin) {
       body,
       createdAt: freshTimestampLabel(),
       createdAtRaw: new Date().toISOString(),
-      avatarUrl: currentAvatarUrl(),
     };
     state.comments.unshift(comment);
     try {
@@ -3421,7 +3522,6 @@ function renderSettings() {
   const isAdmin = state.session?.role === "admin";
   setPageHeader("Settings", isAdmin ? "Admin settings" : "Account settings");
   document.querySelector("#openCreate").hidden = true;
-  const avatarUrl = currentAvatarUrl();
   const phoneNumber = state.session?.phoneNumber || "";
   const smsEnabled = Boolean(phoneNumber && state.session?.smsOptIn && !state.session?.smsOptedOut);
   root.innerHTML = `
@@ -3432,13 +3532,9 @@ function renderSettings() {
             <p class="eyebrow">Profile</p>
             <h3>Your account</h3>
           </div>
-          ${renderAvatar(state.session?.name || state.session?.email, avatarUrl)}
+          ${renderAvatar(state.session?.name || state.session?.email)}
         </div>
-        <p class="muted">This name and photo show beside comments you leave on review pages.</p>
-        <label class="profile-upload">
-          Profile picture
-          <input id="avatarUpload" type="file" accept="image/*" />
-        </label>
+        <p class="muted">Your account name appears beside comments you leave on review pages.</p>
       </section>
 
       <section class="panel settings-card">
@@ -3535,67 +3631,6 @@ function renderSettings() {
   setupSettingsHandlers();
 }
 
-function readAvatarFile(file) {
-  return new Promise((resolve, reject) => {
-    if (!file) {
-      resolve("");
-      return;
-    }
-    if (!file.type.startsWith("image/")) {
-      reject(new Error("Choose an image file for your profile picture."));
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("Profile picture could not be read."));
-    reader.onload = () => {
-      const image = new Image();
-      image.onerror = () => reject(new Error("Profile picture could not be opened."));
-      image.onload = () => {
-        const size = 256;
-        const canvas = document.createElement("canvas");
-        const context = canvas.getContext("2d");
-        const shortestSide = Math.min(image.width, image.height);
-        const sourceX = (image.width - shortestSide) / 2;
-        const sourceY = (image.height - shortestSide) / 2;
-        canvas.width = size;
-        canvas.height = size;
-        context.drawImage(image, sourceX, sourceY, shortestSide, shortestSide, 0, 0, size, size);
-        resolve(canvas.toDataURL("image/jpeg", 0.82));
-      };
-      image.src = String(reader.result || "");
-    };
-    reader.readAsDataURL(file);
-  });
-}
-
-async function saveProfileAvatar(avatarUrl) {
-  const client = getSupabase();
-  if (!client || !state.session) throw new Error("Sign in again before updating your profile.");
-
-  const { error: updateError } = await client.auth.updateUser({
-    data: { avatar_url: avatarUrl },
-  });
-  if (updateError) throw updateError;
-
-  state.session.avatarUrl = avatarUrl;
-  if (state.clientAccount) state.clientAccount.avatarUrl = avatarUrl;
-  const ownAccount = accountForEmail(state.session.email);
-  if (ownAccount) ownAccount.avatarUrl = avatarUrl;
-  saveState();
-
-  const { data: userData } = await client.auth.getUser();
-  if (userData?.user?.id) {
-    const { error: profileError } = await client
-      .from("profiles")
-      .update({ avatar_url: avatarUrl })
-      .eq("id", userData.user.id);
-    if (profileError && !profileError.message?.toLowerCase?.().includes("avatar_url")) {
-      throw profileError;
-    }
-  }
-}
-
 async function saveProfileMessaging({ phoneNumber, smsOptIn }) {
   const client = getSupabase();
   if (!client || !state.session) throw new Error("Sign in again before updating SMS settings.");
@@ -3660,20 +3695,6 @@ async function generateInviteCode({ role, email }) {
 }
 
 function setupSettingsHandlers() {
-  root.querySelector("#avatarUpload")?.addEventListener("change", async (event) => {
-    const file = event.currentTarget.files?.[0];
-    if (!file) return;
-    try {
-      showToast("Saving profile picture...");
-      const avatarUrl = await readAvatarFile(file);
-      await saveProfileAvatar(avatarUrl);
-      showToast("Profile picture saved");
-      renderSettings();
-    } catch (error) {
-      showToast(error.message || "Profile picture did not save");
-    }
-  });
-
   root.querySelector("#passwordForm")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const button = event.currentTarget.querySelector("button[type='submit']");
@@ -4150,8 +4171,7 @@ function openDialog(intent = createIntent) {
       ["note", "Client comment", "What changed in this version?"],
     ],
     finalVersion: [
-      ["videoId", "Video", "", "video-select"],
-      ["label", "Version label", "Final version"],
+      ["label", "Final cut name", "Final cut"],
       ["provider", "Provider", "Bunny Stream", "select"],
       ["file", "Video file", ""],
       ["embedUrl", "Video URL", "https://player.vimeo.com/video/123456789", "url"],
@@ -4192,6 +4212,11 @@ function openDialog(intent = createIntent) {
   dialogEyebrow.textContent = "Create";
   dialogSubtitle.hidden = true;
   dialogSubtitle.textContent = "";
+  if (intent === "finalVersion") {
+    const video = activeVideo();
+    dialogSubtitle.hidden = !video;
+    dialogSubtitle.textContent = video ? `Uploading final cut for ${video.title}` : "";
+  }
   if (createSubmit) {
     createSubmit.textContent = intent === "version" || intent === "finalVersion" ? "Upload" : "Save";
     createSubmit.disabled = false;
@@ -4219,14 +4244,6 @@ function openDialog(intent = createIntent) {
                     <option value="Bunny Stream">Bunny</option>
                     <option value="Vimeo">Vimeo</option>
                     <option value="Direct URL">URL</option>
-                  </select>`
-              : type === "video-select"
-                ? `<select name="${name}">
-                    ${projectVideos(activeProject()?.id)
-                      .map(
-                        (video) => `<option value="${escapeHtml(video.id)}" ${video.id === state.selectedVideoId ? "selected" : ""}>${escapeHtml(video.title)}</option>`,
-                      )
-                      .join("")}
                   </select>`
               : name === "file"
                 ? `<input name="${name}" type="file" accept="video/*" />`
@@ -4333,6 +4350,7 @@ async function handleCreateFormSubmit(event) {
         title,
         status: "draft",
         due: form.get("due") || "Soon",
+        createdAt: new Date().toISOString(),
       };
       state.videos.unshift(video);
       state.selectedVideoId = videoId;
@@ -4349,19 +4367,20 @@ async function handleCreateFormSubmit(event) {
         title,
         status: "image",
         due: imageUrl,
+        createdAt: new Date().toISOString(),
       });
     }
 
     if (createIntent === "version" || createIntent === "finalVersion") {
       const project = activeProject();
-      const selectedVideoId = createIntent === "finalVersion" ? form.get("videoId") || state.selectedVideoId : state.selectedVideoId;
+      const selectedVideoId = state.selectedVideoId;
       const video = projectVideos(project?.id).find((item) => item.id === selectedVideoId);
       if (!video) {
         throw new Error("Open a video before uploading a version.");
       }
 
       const file = form.get("file");
-      const label = form.get("label") || (createIntent === "finalVersion" ? "Final version" : "New version");
+      const label = form.get("label") || (createIntent === "finalVersion" ? "Final cut" : "New version");
       const provider = form.get("provider") || "Bunny Stream";
       const isDirectUrl = provider === "Direct URL";
       let embedUrl = "";

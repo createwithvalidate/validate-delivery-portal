@@ -305,6 +305,15 @@ button:disabled {
   gap: 10px;
 }
 
+.optional-note {
+  margin-left: 6px;
+  color: rgba(251, 251, 251, 0.52);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .toggle-row {
   display: flex;
   align-items: center;
@@ -329,6 +338,15 @@ button:disabled {
 .toggle-row span {
   color: var(--muted);
   font-size: 0.86rem;
+}
+
+.toggle-row small {
+  margin-left: 4px;
+  color: rgba(251, 251, 251, 0.48);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .admin-access-button {
@@ -1448,7 +1466,6 @@ button:disabled {
   min-height: 230px;
 }
 
-.profile-upload,
 .settings-form {
   display: grid;
   gap: 10px;
@@ -2216,20 +2233,6 @@ button:disabled {
   overflow: hidden;
 }
 
-.avatar img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.avatar.has-image {
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.avatar.has-image span {
-  display: none;
-}
-
 .comment-row p {
   margin: 4px 0 0;
   color: var(--muted);
@@ -2291,6 +2294,72 @@ textarea {
   display: grid;
   gap: 13px;
   margin: 18px 0;
+}
+
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.48);
+  backdrop-filter: blur(14px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 180ms ease;
+}
+
+.confirm-overlay[hidden] {
+  display: none;
+}
+
+.confirm-overlay.show {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.confirm-card {
+  width: min(430px, 100%);
+  padding: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: var(--radius);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.018)),
+    rgba(14, 14, 16, 0.96);
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.52);
+  transform: translateY(8px) scale(0.98);
+  transition: transform 180ms ease;
+}
+
+.confirm-overlay.show .confirm-card {
+  transform: translateY(0) scale(1);
+}
+
+.confirm-card h2 {
+  margin: 0;
+  font-size: 1.65rem;
+  letter-spacing: 0;
+  line-height: 1;
+}
+
+.confirm-card p:not(.eyebrow) {
+  margin: 12px 0 0;
+  color: rgba(251, 251, 251, 0.72);
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.danger-confirm {
+  background: #f7b8b2;
+  color: #160807;
 }
 
 .account-picker {
