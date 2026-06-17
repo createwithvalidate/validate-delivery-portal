@@ -1359,51 +1359,25 @@ function showPortalPrompt({
   });
 }
 
-function renderNotifySummary({ project, video, version, emails = [], smsEmails = [] }) {
+function renderNotifySummary({ project, video, version, emails = [] }) {
   const note = version?.note?.trim();
-  const emailRows = emails
-    .map((email) => `<span>${escapeHtml(accountNameForEmail(email) || email)}</span>`)
-    .join("");
-  const smsRows = smsEmails
-    .map((email) => `<span>${escapeHtml(accountNameForEmail(email) || email)}</span>`)
-    .join("");
+  const names = emails.map((email) => accountNameForEmail(email) || email);
+  const recipientLabel =
+    names.length === 1
+      ? names[0]
+      : names.length === 2
+        ? names.join(" and ")
+        : `${names.slice(0, 2).join(", ")} and ${names.length - 2} more`;
 
   return `
     <div class="confirm-summary">
-      <div>
-        <span>Project</span>
-        <strong>${escapeHtml(project?.name || "Project")}</strong>
-      </div>
-      <div>
-        <span>Video</span>
-        <strong>${escapeHtml(video?.title || project?.name || "Video")}</strong>
-      </div>
-      <div>
-        <span>Version</span>
-        <strong>${escapeHtml(version?.label || "Latest version")}</strong>
-      </div>
-      ${
-        note
-          ? `<div class="confirm-summary-note">
-              <span>Message</span>
-              <strong>${escapeHtml(note)}</strong>
-            </div>`
-          : ""
-      }
-      <div>
-        <span>Email to</span>
-        <strong>${emails.length} client account${emails.length === 1 ? "" : "s"}</strong>
-        <div class="confirm-recipient-list">${emailRows}</div>
-      </div>
-      ${
-        smsEmails.length
-          ? `<div>
-              <span>SMS to</span>
-              <strong>${smsEmails.length} selected number${smsEmails.length === 1 ? "" : "s"}</strong>
-              <div class="confirm-recipient-list">${smsRows}</div>
-            </div>`
-          : ""
-      }
+      <p>
+        Email <strong>${escapeHtml(recipientLabel)}</strong> about
+        <strong>${escapeHtml(version?.label || "the latest version")}</strong>
+        of <strong>${escapeHtml(video?.title || project?.name || "this video")}</strong>
+        in <strong>${escapeHtml(project?.name || "this project")}</strong>.
+      </p>
+      ${note ? `<p class="confirm-summary-note">${escapeHtml(note)}</p>` : ""}
     </div>
   `;
 }
@@ -2408,14 +2382,10 @@ async function notifyProjectRecipients(button, targetEmails = null) {
     return;
   }
 
-  const smsEmails = projectSmsRecipientEmails(project.id).filter((email) => {
-    const account = accountForEmail(email);
-    return emails.includes(email) && canSendSmsToAccount(account);
-  });
   const confirmed = await showPortalPrompt({
     eyebrow: "Notify clients",
     title: "Send this update?",
-    html: renderNotifySummary({ project, video, version, emails, smsEmails }),
+    html: renderNotifySummary({ project, video, version, emails }),
     confirmText: "Notify clients",
     cancelText: "Cancel",
   });
