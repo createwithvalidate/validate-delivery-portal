@@ -802,7 +802,7 @@ button:disabled {
 }
 
 .hero-band.admin-hero {
-  min-height: 118px;
+  min-height: 142px;
   background:
     linear-gradient(135deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.012)),
     #09090a;
@@ -813,7 +813,7 @@ button:disabled {
 }
 
 .hero-band.client-hero {
-  min-height: 142px;
+  min-height: 118px;
 }
 
 .dashboard-photo-grid {
