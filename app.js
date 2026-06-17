@@ -1684,7 +1684,26 @@ function vimeoVideoIdFromEmbedUrl(embedUrl = "") {
   return match ? match[1] : "";
 }
 
+function normalizeVideoUrl(value = "") {
+  const url = String(value || "").trim();
+  if (!url) return "";
+
+  const vimeoMatch = url.match(/vimeo\.com\/(?:video\/)?(\d+)/);
+  if (vimeoMatch) return `https://player.vimeo.com/video/${vimeoMatch[1]}`;
+
+  const youtubeMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]+)/);
+  if (youtubeMatch) return `https://www.youtube.com/embed/${youtubeMatch[1]}`;
+
+  return url;
+}
+
+function isVideoFileUrl(value = "") {
+  return /\.(mp4|webm|mov)(?:$|[?#])/i.test(String(value || ""));
+}
+
 function videoThumbnailUrl(version) {
+  if (version?.provider === "Direct URL") return "";
+
   if (version?.provider === "Vimeo") {
     const vimeoVideoId = version?.bunnyVideoId || vimeoVideoIdFromEmbedUrl(version?.embedUrl);
     return vimeoVideoId ? apiUrl(`/api/vimeo-thumbnail?videoId=${encodeURIComponent(vimeoVideoId)}`) : "";
@@ -1724,6 +1743,7 @@ function renderVideoCardGrid({
   actionLabel = "Open",
   emptyText = "No videos yet.",
   requireVersion = false,
+  allowDelete = false,
 }) {
   if (!videos.length) return `<div class="empty compact-empty">${emptyText}</div>`;
 
@@ -1739,24 +1759,31 @@ function renderVideoCardGrid({
           );
           const isDisabled = requireVersion && !versions.length;
           return `
-            <button class="video-card" type="button" ${dataAttribute}="${escapeHtml(video.id)}" ${isDisabled ? "disabled" : ""}>
-              ${renderVideoThumbnail({ version, title: video.title })}
-              <span class="video-card-body">
-                <span>
-                  <strong class="video-card-title">${escapeHtml(video.title)}</strong>
-                  <span class="muted">${version ? `Latest: ${escapeHtml(version.label)}` : "Add first version."}</span>
+            <div class="video-card-wrap">
+              <button class="video-card" type="button" ${dataAttribute}="${escapeHtml(video.id)}" ${isDisabled ? "disabled" : ""}>
+                ${renderVideoThumbnail({ version, title: video.title })}
+                <span class="video-card-body">
+                  <span>
+                    <strong class="video-card-title">${escapeHtml(video.title)}</strong>
+                    <span class="muted">${version ? `Latest: ${escapeHtml(version.label)}` : "Add first version."}</span>
+                  </span>
+                  ${
+                    versions.length || noteCount
+                      ? `<span class="meta-strip">
+                          ${versions.length ? `<span>${versionCountLabel(versions.length)}</span>` : ""}
+                          ${noteCount ? `<span>${noteCount} comments</span>` : ""}
+                        </span>`
+                      : ""
+                  }
+                  <span class="video-card-action">${versions.length ? actionLabel : "Add first version"}</span>
                 </span>
-                ${
-                  versions.length || noteCount
-                    ? `<span class="meta-strip">
-                        ${versions.length ? `<span>${versionCountLabel(versions.length)}</span>` : ""}
-                        ${noteCount ? `<span>${noteCount} comments</span>` : ""}
-                      </span>`
-                    : ""
-                }
-                <span class="video-card-action">${versions.length ? actionLabel : "Add first version"}</span>
-              </span>
-            </button>
+              </button>
+              ${
+                allowDelete
+                  ? `<button class="media-delete-button" type="button" data-delete-video="${escapeHtml(video.id)}">Remove</button>`
+                  : ""
+              }
+            </div>
           `;
         })
         .join("")}
@@ -1798,7 +1825,7 @@ function renderProjectAccessList(emails = [], emptyText = "No clients have acces
   `;
 }
 
-function renderProjectImageGrid(images, { emptyText = "No project images yet." } = {}) {
+function renderProjectImageGrid(images, { emptyText = "No project images yet.", allowDelete = false } = {}) {
   if (!images.length) {
     return `<div class="empty compact-empty">${emptyText}</div>`;
   }
@@ -1808,15 +1835,22 @@ function renderProjectImageGrid(images, { emptyText = "No project images yet." }
       ${images
         .map(
           (image) => `
-            <a class="image-tile" href="${escapeHtml(image.due || "#")}" target="_blank" rel="noreferrer">
-              <span class="image-preview">
-                <img src="${escapeHtml(image.due || "")}" alt="${escapeHtml(image.title)}" loading="lazy" />
-              </span>
-              <span class="image-tile-copy">
-                <strong>${escapeHtml(image.title)}</strong>
-                <span>Project image</span>
-              </span>
-            </a>
+            <div class="image-tile-wrap">
+              <a class="image-tile" href="${escapeHtml(image.due || "#")}" target="_blank" rel="noreferrer">
+                <span class="image-preview">
+                  <img src="${escapeHtml(image.due || "")}" alt="${escapeHtml(image.title)}" loading="lazy" />
+                </span>
+                <span class="image-tile-copy">
+                  <strong>${escapeHtml(image.title)}</strong>
+                  <span>Project image</span>
+                </span>
+              </a>
+              ${
+                allowDelete
+                  ? `<button class="media-delete-button" type="button" data-delete-image="${escapeHtml(image.id)}">Remove</button>`
+                  : ""
+              }
+            </div>
           `,
         )
         .join("")}
@@ -1963,6 +1997,59 @@ async function deleteProject(projectId) {
   }
   showToast("Project deleted");
   renderProjects();
+}
+
+async function deleteVideo(videoId) {
+  const video = state.videos.find((item) => item.id === videoId && item.status !== "image");
+  if (!video) return;
+  const confirmed = window.confirm(`Remove ${video.title} and all of its versions and comments?`);
+  if (!confirmed) return;
+
+  const versionIds = state.versions.filter((version) => version.videoId === videoId).map((version) => version.id);
+  state.videos = state.videos.filter((item) => item.id !== videoId);
+  state.versions = state.versions.filter((version) => version.videoId !== videoId);
+  state.comments = state.comments.filter((comment) => !versionIds.includes(comment.versionId));
+  if (state.selectedVideoId === videoId) {
+    state.selectedVideoId = projectVideos(state.selectedProjectId)[0]?.id || "";
+    state.selectedVersionId = "";
+  }
+  state.activity.unshift(`Removed video ${video.title}`);
+  saveState();
+
+  try {
+    const supabase = getSupabase();
+    const { data: userData } = supabase ? await supabase.auth.getUser() : { data: {} };
+    if (userData?.user) await supabase.from("videos").delete().eq("id", videoId);
+  } catch (error) {
+    console.warn("Supabase video delete failed", error);
+    showToast("Removed locally. Supabase did not delete yet.");
+  }
+
+  showToast("Video removed");
+  renderProjectDetail();
+}
+
+async function deleteImage(imageId) {
+  const image = state.videos.find((item) => item.id === imageId && item.status === "image");
+  if (!image) return;
+  const confirmed = window.confirm(`Remove ${image.title}?`);
+  if (!confirmed) return;
+
+  state.videos = state.videos.filter((item) => item.id !== imageId);
+  state.activity.unshift(`Removed image ${image.title}`);
+  saveState();
+
+  try {
+    const supabase = getSupabase();
+    const { data: userData } = supabase ? await supabase.auth.getUser() : { data: {} };
+    if (userData?.user) await supabase.from("videos").delete().eq("id", imageId);
+  } catch (error) {
+    console.warn("Supabase image delete failed", error);
+    showToast("Removed locally. Supabase did not delete yet.");
+  }
+
+  showToast("Image removed");
+  renderProjectDetail();
 }
 
 function setHeroMode(mode, projects = []) {
@@ -2682,7 +2769,7 @@ function renderProjectDetail() {
                 <button class="primary-button small-action" id="addVideo">Add video</button>
               </div>
             </div>
-            ${renderVideoCardGrid({ videos, dataAttribute: "data-video", actionLabel: "Open" })}
+            ${renderVideoCardGrid({ videos, dataAttribute: "data-video", actionLabel: "Open", allowDelete: true })}
           </div>
           <div class="media-section media-section-box">
             <div class="media-section-head">
@@ -2694,12 +2781,13 @@ function renderProjectDetail() {
                 <button class="primary-button small-action" id="addImage">Add image</button>
               </div>
             </div>
-            ${renderProjectImageGrid(images, { emptyText: "No images yet." })}
+            ${renderProjectImageGrid(images, { emptyText: "No images yet.", allowDelete: true })}
           </div>
         </div>
       </section>
       <aside class="panel stack action-panel">
         <p class="eyebrow">Delivery</p>
+        <button class="ghost-button" id="uploadFinalVersion">Upload final version</button>
         <button class="primary-button" id="deliveryPrimary">${deliveryButtonLabel}</button>
         <p class="muted">${sendStatus}</p>
         <div class="access-block">
@@ -2728,8 +2816,22 @@ function renderProjectDetail() {
   root.querySelector("#manageClients").addEventListener("click", () => {
     openProjectShareDialog();
   });
+  root.querySelector("#uploadFinalVersion").addEventListener("click", openFinalVersionDialog);
   root.querySelector("#addVideo").addEventListener("click", () => openDialog("video"));
   root.querySelector("#addImage").addEventListener("click", () => openDialog("image"));
+  root.querySelectorAll("[data-delete-video]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      deleteVideo(button.dataset.deleteVideo);
+    });
+  });
+  root.querySelectorAll("[data-delete-image]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      deleteImage(button.dataset.deleteImage);
+    });
+  });
 }
 
 function renderAdminReview() {
@@ -3026,7 +3128,9 @@ function renderReviewShell(isAdmin) {
         <div class="video-frame">
           ${
             version?.embedUrl
-              ? `<iframe title="${video.title}" src="${version.embedUrl}" allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;" allowfullscreen></iframe>`
+              ? version.provider === "Direct URL" && isVideoFileUrl(version.embedUrl)
+                ? `<video src="${escapeHtml(version.embedUrl)}" controls playsinline preload="metadata"></video>`
+                : `<iframe title="${video.title}" src="${version.embedUrl}" allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;" allowfullscreen></iframe>`
               : `<div class="review-placeholder"><span>Awaiting video</span></div>`
           }
         </div>
@@ -3048,7 +3152,12 @@ function renderReviewShell(isAdmin) {
       </section>
       <aside class="panel stack review-side-panel">
         <p class="eyebrow">Versions</p>
-        ${isAdmin ? `<button class="primary-button" id="addReviewVersion">${versions.length ? "Upload new version" : "Add first version"}</button>` : ""}
+        ${
+          isAdmin
+            ? `<button class="primary-button" id="addReviewVersion">${versions.length ? "Upload new version" : "Add first version"}</button>
+              <button class="ghost-button" id="addFinalReviewVersion">Upload final version</button>`
+            : ""
+        }
         ${
           versions.length
             ? `
@@ -3161,6 +3270,7 @@ function renderReviewShell(isAdmin) {
   });
 
   root.querySelector("#addReviewVersion")?.addEventListener("click", () => openDialog("version"));
+  root.querySelector("#addFinalReviewVersion")?.addEventListener("click", () => openDialog("finalVersion"));
 
   root.querySelector("#reviewStatusToggle")?.addEventListener("click", () => {
     const panel = root.querySelector("#reviewStatusPanel");
@@ -3978,6 +4088,39 @@ function openProjectAdminsDialog() {
   dialog.showModal();
 }
 
+function openFinalVersionDialog() {
+  const videos = projectVideos(activeProject()?.id);
+  if (!videos.length) {
+    showToast("Add a video before uploading a final version");
+    return;
+  }
+  if (!videos.some((video) => video.id === state.selectedVideoId)) {
+    state.selectedVideoId = videos[0].id;
+    saveState();
+  }
+  openDialog("finalVersion");
+}
+
+function setupProviderFieldToggle() {
+  const provider = dialogFields.querySelector('select[name="provider"]');
+  const fileInput = dialogFields.querySelector('input[name="file"]');
+  const urlInput = dialogFields.querySelector('input[name="embedUrl"]');
+  if (!provider || !fileInput || !urlInput) return;
+
+  const fileLabel = fileInput.closest("label");
+  const urlLabel = urlInput.closest("label");
+  const syncFields = () => {
+    const isDirectUrl = provider.value === "Direct URL";
+    if (fileLabel) fileLabel.hidden = isDirectUrl;
+    if (urlLabel) urlLabel.hidden = !isDirectUrl;
+    fileInput.required = !isDirectUrl;
+    urlInput.required = isDirectUrl;
+  };
+
+  provider.addEventListener("change", syncFields);
+  syncFields();
+}
+
 function openDialog(intent = createIntent) {
   createIntent = intent;
   clientDialogStep = intent === "client" ? "details" : "";
@@ -4003,7 +4146,16 @@ function openDialog(intent = createIntent) {
       ["label", "Version label", "Version 4"],
       ["provider", "Provider", "Bunny Stream", "select"],
       ["file", "Video file", ""],
+      ["embedUrl", "Video URL", "https://player.vimeo.com/video/123456789", "url"],
       ["note", "Client comment", "What changed in this version?"],
+    ],
+    finalVersion: [
+      ["videoId", "Video", "", "video-select"],
+      ["label", "Version label", "Final version"],
+      ["provider", "Provider", "Bunny Stream", "select"],
+      ["file", "Video file", ""],
+      ["embedUrl", "Video URL", "https://player.vimeo.com/video/123456789", "url"],
+      ["note", "Client comment", "Final cut ready for review."],
     ],
   };
 
@@ -4022,7 +4174,7 @@ function openDialog(intent = createIntent) {
     return;
   }
 
-  if ((intent === "video" || intent === "version" || intent === "image") && !activeProject()) {
+  if ((intent === "video" || intent === "version" || intent === "finalVersion" || intent === "image") && !activeProject()) {
     showToast("Open a project before uploading");
     return;
   }
@@ -4034,13 +4186,14 @@ function openDialog(intent = createIntent) {
     video: "Add video",
     image: "Add image",
     version: isFirstVersion ? "Add first version" : "Upload new version",
+    finalVersion: "Upload final version",
   }[intent];
   dialogEyebrow.hidden = false;
   dialogEyebrow.textContent = "Create";
   dialogSubtitle.hidden = true;
   dialogSubtitle.textContent = "";
   if (createSubmit) {
-    createSubmit.textContent = intent === "version" ? "Upload" : "Save";
+    createSubmit.textContent = intent === "version" || intent === "finalVersion" ? "Upload" : "Save";
     createSubmit.disabled = false;
   }
   document.querySelector("#cancelDialog").textContent = "Cancel";
@@ -4065,10 +4218,19 @@ function openDialog(intent = createIntent) {
                 ? `<select name="${name}">
                     <option value="Bunny Stream">Bunny</option>
                     <option value="Vimeo">Vimeo</option>
+                    <option value="Direct URL">URL</option>
+                  </select>`
+              : type === "video-select"
+                ? `<select name="${name}">
+                    ${projectVideos(activeProject()?.id)
+                      .map(
+                        (video) => `<option value="${escapeHtml(video.id)}" ${video.id === state.selectedVideoId ? "selected" : ""}>${escapeHtml(video.title)}</option>`,
+                      )
+                      .join("")}
                   </select>`
               : name === "file"
                 ? `<input name="${name}" type="file" accept="video/*" />`
-                : name === "imageUrl"
+                : name === "imageUrl" || name === "embedUrl"
                   ? `<input name="${name}" type="url" placeholder="${placeholder}" />`
                 : `<input name="${name}" placeholder="${placeholder}" />`
           }
@@ -4077,6 +4239,7 @@ function openDialog(intent = createIntent) {
     )
     .join("");
 
+  setupProviderFieldToggle();
   dialog.showModal();
 }
 
@@ -4104,9 +4267,10 @@ async function handleCreateFormSubmit(event) {
     selectedClientId: state.selectedClientId,
     selectedProjectId: state.selectedProjectId,
     selectedVideoId: state.selectedVideoId,
+    selectedVersionId: state.selectedVersionId,
   };
   saveButton.disabled = true;
-  const uploadsVideo = createIntent === "version";
+  const uploadsVideo = createIntent === "version" || createIntent === "finalVersion";
   saveButton.textContent = uploadsVideo ? "Starting upload..." : "Saving...";
   showToast(uploadsVideo ? "Starting upload..." : "Saving...");
   syncPaused = true;
@@ -4188,24 +4352,28 @@ async function handleCreateFormSubmit(event) {
       });
     }
 
-    if (createIntent === "version") {
+    if (createIntent === "version" || createIntent === "finalVersion") {
       const project = activeProject();
-      const video = projectVideos(project?.id).find((item) => item.id === state.selectedVideoId);
+      const selectedVideoId = createIntent === "finalVersion" ? form.get("videoId") || state.selectedVideoId : state.selectedVideoId;
+      const video = projectVideos(project?.id).find((item) => item.id === selectedVideoId);
       if (!video) {
         throw new Error("Open a video before uploading a version.");
       }
 
       const file = form.get("file");
-      const label = form.get("label") || "New version";
+      const label = form.get("label") || (createIntent === "finalVersion" ? "Final version" : "New version");
       const provider = form.get("provider") || "Bunny Stream";
+      const isDirectUrl = provider === "Direct URL";
       let embedUrl = "";
       let bunnyVideoId = "";
 
-      if (!file?.size) {
-        throw new Error("Choose a video file before saving a version");
-      }
-
-      if (file?.size) {
+      if (isDirectUrl) {
+        embedUrl = normalizeVideoUrl(form.get("embedUrl"));
+        if (!embedUrl) throw new Error("Paste a video URL before saving this version.");
+      } else {
+        if (!file?.size) {
+          throw new Error("Choose a video file before saving a version");
+        }
         const upload = await uploadVersionFile({
           provider,
           file,
@@ -4225,11 +4393,15 @@ async function handleCreateFormSubmit(event) {
         provider,
         embedUrl,
         bunnyVideoId,
-        note: form.get("note") || "New review version.",
+        note: form.get("note") || (createIntent === "finalVersion" ? "Final cut ready for review." : "New review version."),
         createdAt: freshTimestampLabel(),
         createdAtRaw: new Date().toISOString(),
         approved: false,
       };
+      if (createIntent === "finalVersion") {
+        project.status = "final";
+        video.status = "final";
+      }
       state.versions.unshift(version);
       state.selectedVideoId = video.id;
       state.selectedVersionId = version.id;
@@ -4240,14 +4412,16 @@ async function handleCreateFormSubmit(event) {
     dialog.close();
     createForm.reset();
     const successMessage = uploadsVideo
-      ? "Version saved"
+      ? createIntent === "finalVersion"
+        ? "Final version saved"
+        : "Version saved"
       : createIntent === "video"
         ? "Video added"
         : "Saved";
     showToast(successMessage);
     if (createIntent === "project") renderProjects();
     else if (createIntent === "video" || createIntent === "image") renderProjectDetail();
-    else if (createIntent === "version") renderReviewShell(state.mode === "admin");
+    else if (createIntent === "version" || createIntent === "finalVersion") renderReviewShell(state.mode === "admin");
     else renderClients();
   } catch (error) {
     state.clients = previousData.clients;
@@ -4263,6 +4437,7 @@ async function handleCreateFormSubmit(event) {
     state.selectedClientId = previousData.selectedClientId;
     state.selectedProjectId = previousData.selectedProjectId;
     state.selectedVideoId = previousData.selectedVideoId;
+    state.selectedVersionId = previousData.selectedVersionId;
     saveState();
     showToast(error.message);
     render();
