@@ -1462,10 +1462,6 @@ button:disabled {
   margin: 0;
 }
 
-.profile-settings-card {
-  min-height: 230px;
-}
-
 .settings-form {
   display: grid;
   gap: 10px;

@@ -3526,17 +3526,6 @@ function renderSettings() {
   const smsEnabled = Boolean(phoneNumber && state.session?.smsOptIn && !state.session?.smsOptedOut);
   root.innerHTML = `
     <div class="settings-layout">
-      <section class="panel settings-card profile-settings-card">
-        <div class="settings-card-head">
-          <div>
-            <p class="eyebrow">Profile</p>
-            <h3>Your account</h3>
-          </div>
-          ${renderAvatar(state.session?.name || state.session?.email)}
-        </div>
-        <p class="muted">Your account name appears beside comments you leave on review pages.</p>
-      </section>
-
       <section class="panel settings-card">
         <div class="settings-card-head">
           <div>
