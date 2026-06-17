@@ -1307,6 +1307,7 @@ function showPortalPrompt({
   eyebrow = "Confirm",
   title = "Are you sure?",
   message = "",
+  html = "",
   confirmText = "Continue",
   cancelText = "Cancel",
   danger = false,
@@ -1323,7 +1324,8 @@ function showPortalPrompt({
     }
     confirmEyebrow.textContent = eyebrow;
     confirmTitle.textContent = title;
-    confirmMessage.textContent = message;
+    if (html) confirmMessage.innerHTML = html;
+    else confirmMessage.textContent = message;
     confirmAccept.textContent = confirmText;
     confirmCancel.textContent = cancelText;
     confirmCancel.hidden = !showCancel;
@@ -1355,6 +1357,55 @@ function showPortalPrompt({
       confirmAccept.focus();
     });
   });
+}
+
+function renderNotifySummary({ project, video, version, emails = [], smsEmails = [] }) {
+  const note = version?.note?.trim();
+  const emailRows = emails
+    .map((email) => `<span>${escapeHtml(accountNameForEmail(email) || email)}</span>`)
+    .join("");
+  const smsRows = smsEmails
+    .map((email) => `<span>${escapeHtml(accountNameForEmail(email) || email)}</span>`)
+    .join("");
+
+  return `
+    <div class="confirm-summary">
+      <div>
+        <span>Project</span>
+        <strong>${escapeHtml(project?.name || "Project")}</strong>
+      </div>
+      <div>
+        <span>Video</span>
+        <strong>${escapeHtml(video?.title || project?.name || "Video")}</strong>
+      </div>
+      <div>
+        <span>Version</span>
+        <strong>${escapeHtml(version?.label || "Latest version")}</strong>
+      </div>
+      ${
+        note
+          ? `<div class="confirm-summary-note">
+              <span>Message</span>
+              <strong>${escapeHtml(note)}</strong>
+            </div>`
+          : ""
+      }
+      <div>
+        <span>Email to</span>
+        <strong>${emails.length} client account${emails.length === 1 ? "" : "s"}</strong>
+        <div class="confirm-recipient-list">${emailRows}</div>
+      </div>
+      ${
+        smsEmails.length
+          ? `<div>
+              <span>SMS to</span>
+              <strong>${smsEmails.length} selected number${smsEmails.length === 1 ? "" : "s"}</strong>
+              <div class="confirm-recipient-list">${smsRows}</div>
+            </div>`
+          : ""
+      }
+    </div>
+  `;
 }
 
 function upsertById(collection, item) {
@@ -2357,6 +2408,19 @@ async function notifyProjectRecipients(button, targetEmails = null) {
     return;
   }
 
+  const smsEmails = projectSmsRecipientEmails(project.id).filter((email) => {
+    const account = accountForEmail(email);
+    return emails.includes(email) && canSendSmsToAccount(account);
+  });
+  const confirmed = await showPortalPrompt({
+    eyebrow: "Notify clients",
+    title: "Send this update?",
+    html: renderNotifySummary({ project, video, version, emails, smsEmails }),
+    confirmText: "Notify clients",
+    cancelText: "Cancel",
+  });
+  if (!confirmed) return;
+
   const originalText = button.textContent;
   button.disabled = true;
   button.textContent = emails.length === projectRecipientEmails(project.id).length ? "Notifying clients..." : "Sending reminder...";
@@ -2373,10 +2437,6 @@ async function notifyProjectRecipients(button, targetEmails = null) {
       version,
       emails,
       emailType: "version",
-    });
-    const smsEmails = projectSmsRecipientEmails(project.id).filter((email) => {
-      const account = accountForEmail(email);
-      return emails.includes(email) && canSendSmsToAccount(account);
     });
     const smsReadyEmails = emails.filter((email) => canSendSmsToAccount(accountForEmail(email)));
     let smsSent = 0;
