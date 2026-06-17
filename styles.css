@@ -2361,32 +2361,58 @@ textarea {
 
 .confirm-summary {
   margin-top: 14px;
-  padding: 13px 14px;
+  padding: 15px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.04);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.025)),
+    rgba(255, 255, 255, 0.035);
 }
 
-.confirm-summary p {
+.confirm-summary-kicker {
   margin: 0;
-  color: rgba(251, 251, 251, 0.72);
-  font-size: 0.96rem;
-  line-height: 1.48;
-}
-
-.confirm-summary p + p {
-  margin-top: 10px;
-}
-
-.confirm-summary strong {
-  color: var(--text);
+  color: rgba(251, 251, 251, 0.54);
+  font-size: 0.68rem;
   font-weight: 800;
+  letter-spacing: 0.15em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.confirm-summary h3 {
+  margin: 8px 0 0;
+  color: var(--text);
+  font-size: 1.15rem;
+  line-height: 1.12;
+  letter-spacing: 0;
+}
+
+.confirm-summary-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 11px;
+}
+
+.confirm-summary-meta span {
+  max-width: 100%;
+  padding: 6px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.18);
+  color: rgba(251, 251, 251, 0.76);
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1;
 }
 
 .confirm-summary-note {
-  padding-top: 10px;
+  margin: 14px 0 0;
+  padding-top: 12px;
   border-top: 1px solid rgba(255, 255, 255, 0.09);
   color: rgba(251, 251, 251, 0.76);
+  font-size: 0.95rem;
+  line-height: 1.45;
 }
 
 .danger-confirm {

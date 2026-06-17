@@ -1364,12 +1364,12 @@ function renderNotifySummary({ project, video, version }) {
 
   return `
     <div class="confirm-summary">
-      <p>
-        Clients will be notified about
-        <strong>${escapeHtml(version?.label || "the latest version")}</strong>
-        of <strong>${escapeHtml(video?.title || project?.name || "this video")}</strong>
-        in <strong>${escapeHtml(project?.name || "this project")}</strong>.
-      </p>
+      <p class="confirm-summary-kicker">Clients will be notified about</p>
+      <h3>${escapeHtml(video?.title || project?.name || "This video")}</h3>
+      <div class="confirm-summary-meta">
+        <span>${escapeHtml(version?.label || "Latest version")}</span>
+        <span>${escapeHtml(project?.name || "Project")}</span>
+      </div>
       ${note ? `<p class="confirm-summary-note">${escapeHtml(note)}</p>` : ""}
     </div>
   `;
