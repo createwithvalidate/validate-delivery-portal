@@ -1617,13 +1617,9 @@ async function completeSignup(form) {
   const fullName = String(form.get("fullName") || "").trim();
   const inviteCode = String(form.get("inviteCode") || "").trim();
   const phoneNumber = normalizePhone(form.get("phoneNumber"));
-  const smsOptIn = form.get("smsOptIn") === "yes";
+  const smsOptIn = Boolean(phoneNumber);
   if (!email || !password || !fullName || !inviteCode) {
     showToast("Name, email, password, and invite code are required");
-    return;
-  }
-  if (smsOptIn && !phoneNumber) {
-    showToast("Add a phone number or turn off SMS notifications");
     return;
   }
 
