@@ -1346,16 +1346,13 @@ button:disabled {
   font-weight: 800;
 }
 
-.media-delete-button {
+.media-delete-button,
+.media-link-button {
   position: absolute;
-  top: 9px;
-  right: 9px;
   min-height: 28px;
   padding: 0 9px;
-  border: 1px solid rgba(255, 109, 94, 0.16);
   border-radius: 999px;
   background: rgba(8, 8, 9, 0.72);
-  color: rgba(255, 210, 206, 0.82);
   font-size: 0.72rem;
   font-weight: 850;
   letter-spacing: 0.04em;
@@ -1369,9 +1366,28 @@ button:disabled {
     background 160ms ease;
 }
 
+.media-delete-button {
+  top: 9px;
+  right: 9px;
+  border: 1px solid rgba(255, 109, 94, 0.16);
+  color: rgba(255, 210, 206, 0.82);
+}
+
+.media-link-button {
+  right: 9px;
+  bottom: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(251, 251, 251, 0.82);
+  opacity: 1;
+  transform: none;
+}
+
 .video-card-wrap:hover .media-delete-button,
 .image-tile-wrap:hover .media-delete-button,
-.media-delete-button:focus-visible {
+.media-delete-button:focus-visible,
+.video-card-wrap:hover .media-link-button,
+.image-tile-wrap:hover .media-link-button,
+.media-link-button:focus-visible {
   opacity: 1;
   transform: translateY(0);
 }
@@ -1379,6 +1395,11 @@ button:disabled {
 .media-delete-button:hover {
   border-color: rgba(255, 109, 94, 0.4);
   background: rgba(255, 109, 94, 0.16);
+}
+
+.media-link-button:hover {
+  border-color: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .media-row {
@@ -1986,6 +2007,77 @@ button:disabled {
   font-weight: 900;
   letter-spacing: 0.18em;
   text-transform: uppercase;
+}
+
+.public-review-mode .shell {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.public-review-mode .sidebar,
+.public-review-mode .topbar {
+  display: none;
+}
+
+.public-review-mode .workspace {
+  min-height: 100vh;
+  padding: clamp(18px, 4vw, 42px);
+}
+
+.public-review-page {
+  display: grid;
+  gap: 18px;
+  min-height: calc(100vh - 84px);
+}
+
+.public-review-header {
+  max-width: 900px;
+}
+
+.public-review-header h1 {
+  margin: 8px 0 0;
+  font-size: clamp(2.5rem, 6vw, 5.8rem);
+  letter-spacing: 0;
+  line-height: 0.92;
+}
+
+.public-review-frame {
+  display: grid;
+  place-items: center;
+  align-self: start;
+  width: min(1200px, 100%);
+  aspect-ratio: 16 / 9;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #111113;
+}
+
+.public-review-frame iframe,
+.public-review-frame video,
+.public-review-frame img {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #111113;
+}
+
+.public-review-frame video,
+.public-review-frame img {
+  object-fit: contain;
+}
+
+.public-login-button {
+  position: fixed;
+  left: 18px;
+  bottom: 18px;
+  min-width: 92px;
+  background: rgba(12, 12, 14, 0.8);
+  backdrop-filter: blur(12px);
+}
+
+.public-link-row {
+  grid-template-columns: minmax(0, 1fr);
+  margin-top: 12px;
 }
 
 .play-badge {

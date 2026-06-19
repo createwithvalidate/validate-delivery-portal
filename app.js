@@ -1838,6 +1838,7 @@ function renderVideoCardGrid({
   emptyText = "No videos yet.",
   requireVersion = false,
   allowDelete = false,
+  allowShare = false,
 }) {
   if (!videos.length) return `<div class="empty compact-empty">${emptyText}</div>`;
 
@@ -1875,6 +1876,11 @@ function renderVideoCardGrid({
               ${
                 allowDelete
                   ? `<button class="media-delete-button" type="button" data-delete-video="${escapeHtml(video.id)}">Remove</button>`
+                  : ""
+              }
+              ${
+                allowShare
+                  ? `<button class="media-link-button" type="button" data-share-video="${escapeHtml(video.id)}">Review link</button>`
                   : ""
               }
             </div>
@@ -1919,7 +1925,7 @@ function renderProjectAccessList(emails = [], emptyText = "No clients have acces
   `;
 }
 
-function renderProjectImageGrid(images, { emptyText = "No project images yet.", allowDelete = false } = {}) {
+function renderProjectImageGrid(images, { emptyText = "No project images yet.", allowDelete = false, allowShare = false } = {}) {
   if (!images.length) {
     return `<div class="empty compact-empty">${emptyText}</div>`;
   }
@@ -1944,6 +1950,11 @@ function renderProjectImageGrid(images, { emptyText = "No project images yet.", 
                   ? `<button class="media-delete-button" type="button" data-delete-image="${escapeHtml(image.id)}">Remove</button>`
                   : ""
               }
+              ${
+                allowShare
+                  ? `<button class="media-link-button" type="button" data-share-image="${escapeHtml(image.id)}">Review link</button>`
+                  : ""
+              }
             </div>
           `,
         )
@@ -1964,6 +1975,150 @@ function renderMetaStrip(items = []) {
 
 function versionCountLabel(count) {
   return `${count} version${count === 1 ? "" : "s"}`;
+}
+
+function publicReviewHash({ mediaId = "", versionId = "" } = {}) {
+  return `#public-review/${encodeURIComponent(mediaId)}${versionId ? `/${encodeURIComponent(versionId)}` : ""}`;
+}
+
+function publicReviewUrl({ mediaId = "", versionId = "" } = {}) {
+  const isLocalPreview =
+    location.protocol === "file:" ||
+    location.hostname === "localhost" ||
+    location.hostname === "127.0.0.1";
+  const base = isLocalPreview ? productionOrigin : `${location.origin}${location.pathname}`;
+  return `${base}${publicReviewHash({ mediaId, versionId })}`;
+}
+
+function publicReviewParamsFromHash() {
+  const match = location.hash.match(/^#public-review\/([^/]+)(?:\/([^/]+))?$/);
+  return match
+    ? {
+        mediaId: decodeURIComponent(match[1]),
+        versionId: match[2] ? decodeURIComponent(match[2]) : "",
+      }
+    : null;
+}
+
+async function openPublicReviewLink(mediaId, versionId = "") {
+  const media = state.videos.find((item) => item.id === mediaId);
+  if (!media) return;
+  const versions = media.status === "image" ? [] : videoVersions(media.id);
+  const version = versions.find((item) => item.id === versionId) || versions[0] || null;
+  const url = publicReviewUrl({ mediaId: media.id, versionId: version?.id || "" });
+  const confirmed = await showPortalPrompt({
+    eyebrow: "Public review link",
+    title: "Send review link",
+    html: `
+      <div class="confirm-summary">
+        <p class="confirm-summary-kicker">Anyone with this link can view only</p>
+        <h3>${escapeHtml(media.title)}</h3>
+        <div class="confirm-summary-meta">
+          <span>${escapeHtml(media.status === "image" ? "Image" : version?.label || "Video")}</span>
+          <span>No comments or approval</span>
+        </div>
+      </div>
+      <div class="copy-row public-link-row">
+        <code>${escapeHtml(url)}</code>
+      </div>
+    `,
+    confirmText: "Copy link",
+    cancelText: "Close",
+  });
+  if (!confirmed) return;
+  try {
+    await navigator.clipboard?.writeText(url);
+    showToast("Review link copied");
+  } catch {
+    showToast("Copy failed. Select the link and copy it manually.");
+  }
+}
+
+function publicReviewMediaFrame(review) {
+  if (review?.media?.type === "image") {
+    return review.media.imageUrl
+      ? `<img src="${escapeHtml(review.media.imageUrl)}" alt="${escapeHtml(review.media.title)}" />`
+      : `<div class="review-placeholder"><span>Image unavailable</span></div>`;
+  }
+
+  const version = review?.version;
+  if (!version?.embedUrl) {
+    return `<div class="review-placeholder"><span>Video not uploaded yet</span></div>`;
+  }
+
+  return version.provider === "Direct URL" && isVideoFileUrl(version.embedUrl)
+    ? `<video src="${escapeHtml(version.embedUrl)}" controls playsinline preload="metadata"></video>`
+    : `<iframe title="${escapeHtml(review.media.title)}" src="${escapeHtml(version.embedUrl)}" allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;" allowfullscreen></iframe>`;
+}
+
+function renderPublicReview(review) {
+  document.body.classList.add("public-review-mode");
+  loginScreen.hidden = true;
+  appShell.hidden = false;
+  dashboardHero.hidden = true;
+  root.innerHTML = `
+    <section class="public-review-page">
+      <div class="public-review-header">
+        <p class="eyebrow">${escapeHtml(review?.media?.type === "image" ? "Image review" : "Video review")}</p>
+        <h1>${escapeHtml(review?.media?.title || "Review")}</h1>
+        ${
+          review?.version?.label
+            ? `<p class="muted">${escapeHtml(review.version.label)}</p>`
+            : review?.project?.name
+              ? `<p class="muted">${escapeHtml(review.project.name)}</p>`
+              : ""
+        }
+      </div>
+      <div class="public-review-frame">
+        ${publicReviewMediaFrame(review)}
+      </div>
+      <button class="ghost-button public-login-button" type="button" id="publicReviewLogin">Login</button>
+    </section>
+  `;
+  root.querySelector("#publicReviewLogin")?.addEventListener("click", leavePublicReview);
+}
+
+async function openPublicReviewFromHash() {
+  const params = publicReviewParamsFromHash();
+  if (!params) return false;
+  document.body.classList.add("public-review-mode");
+  loginScreen.hidden = true;
+  appShell.hidden = false;
+  dashboardHero.hidden = true;
+  root.innerHTML = `<section class="public-review-page"><div class="empty">Loading review...</div></section>`;
+  try {
+    const search = new URLSearchParams({
+      mediaId: params.mediaId,
+    });
+    if (params.versionId) search.set("versionId", params.versionId);
+    const response = await fetch(apiUrl(`/api/public-review?${search.toString()}`));
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || "Review link could not load.");
+    renderPublicReview(result);
+  } catch (error) {
+    root.innerHTML = `
+      <section class="public-review-page">
+        <div class="empty">${escapeHtml(error.message || "Review link could not load.")}</div>
+        <button class="ghost-button public-login-button" type="button" id="publicReviewLogin">Login</button>
+      </section>
+    `;
+    root.querySelector("#publicReviewLogin")?.addEventListener("click", leavePublicReview);
+  }
+  return true;
+}
+
+async function leavePublicReview() {
+  document.body.classList.remove("public-review-mode");
+  if (location.hash.startsWith("#public-review/")) history.replaceState(null, "", location.pathname);
+  let restored = false;
+  try {
+    restored = await restoreSupabaseSession();
+    if (restored) startCrossDeviceSync();
+  } catch (error) {
+    console.warn("Public review login handoff failed", error);
+  }
+  if (!restored) clearAccountSession();
+  render();
 }
 
 function reviewProjectIdFromHash() {
@@ -2920,7 +3075,7 @@ function renderProjectDetail() {
                 <button class="primary-button small-action" id="addVideo">Add video</button>
               </div>
             </div>
-            ${renderVideoCardGrid({ videos, dataAttribute: "data-video", actionLabel: "Open", allowDelete: true })}
+            ${renderVideoCardGrid({ videos, dataAttribute: "data-video", actionLabel: "Open", allowDelete: true, allowShare: true })}
           </div>
           <div class="media-section media-section-box">
             <div class="media-section-head">
@@ -2932,7 +3087,7 @@ function renderProjectDetail() {
                 <button class="primary-button small-action" id="addImage">Add image</button>
               </div>
             </div>
-            ${renderProjectImageGrid(images, { emptyText: "No images yet.", allowDelete: true })}
+            ${renderProjectImageGrid(images, { emptyText: "No images yet.", allowDelete: true, allowShare: true })}
           </div>
         </div>
       </section>
@@ -2981,6 +3136,19 @@ function renderProjectDetail() {
       event.preventDefault();
       event.stopPropagation();
       deleteImage(button.dataset.deleteImage);
+    });
+  });
+  root.querySelectorAll("[data-share-video]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openPublicReviewLink(button.dataset.shareVideo);
+    });
+  });
+  root.querySelectorAll("[data-share-image]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      openPublicReviewLink(button.dataset.shareImage);
     });
   });
 }
@@ -3367,6 +3535,7 @@ function renderReviewShell(isAdmin) {
                   <span class="chevron-down" aria-hidden="true"></span>
                 </span>
               </button>
+              <button class="ghost-button" id="shareReviewVersion" type="button">Review link</button>
               <div class="review-status-panel" id="reviewStatusPanel" hidden>
                 <div id="reviewStatusMount">${renderReviewStatusContent(version, project)}</div>
               </div>`
@@ -3431,6 +3600,9 @@ function renderReviewShell(isAdmin) {
 
   root.querySelector("#addReviewVersion")?.addEventListener("click", () => openDialog("version"));
   root.querySelector("#addFinalReviewVersion")?.addEventListener("click", () => openDialog("finalVersion"));
+  root
+    .querySelector("#shareReviewVersion")
+    ?.addEventListener("click", () => openPublicReviewLink(video.id, version?.id || ""));
 
   root.querySelector("#reviewStatusToggle")?.addEventListener("click", () => {
     const panel = root.querySelector("#reviewStatusPanel");
@@ -4549,6 +4721,10 @@ async function bootPortal() {
   setLoginRole("client");
   applyInviteSignupParams();
   watchSupabaseAuth();
+  if (publicReviewParamsFromHash()) {
+    await openPublicReviewFromHash();
+    return;
+  }
   let restored = false;
   try {
     restored = await restoreSupabaseSession();
@@ -4570,6 +4746,14 @@ async function bootPortal() {
 
 bootPortal();
 window.addEventListener("hashchange", () => {
+  if (publicReviewParamsFromHash()) {
+    openPublicReviewFromHash();
+    return;
+  }
+  if (document.body.classList.contains("public-review-mode")) {
+    leavePublicReview();
+    return;
+  }
   openReviewFromHash({ showMissingMessage: true });
 });
 document.addEventListener("visibilitychange", () => {
