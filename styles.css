@@ -1346,8 +1346,7 @@ button:disabled {
   font-weight: 800;
 }
 
-.media-delete-button,
-.media-link-button {
+.media-delete-button {
   position: absolute;
   min-height: 28px;
   padding: 0 9px;
@@ -1373,21 +1372,9 @@ button:disabled {
   color: rgba(255, 210, 206, 0.82);
 }
 
-.media-link-button {
-  right: 9px;
-  bottom: 9px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: rgba(251, 251, 251, 0.82);
-  opacity: 1;
-  transform: none;
-}
-
 .video-card-wrap:hover .media-delete-button,
 .image-tile-wrap:hover .media-delete-button,
-.media-delete-button:focus-visible,
-.video-card-wrap:hover .media-link-button,
-.image-tile-wrap:hover .media-link-button,
-.media-link-button:focus-visible {
+.media-delete-button:focus-visible {
   opacity: 1;
   transform: translateY(0);
 }
@@ -1395,11 +1382,6 @@ button:disabled {
 .media-delete-button:hover {
   border-color: rgba(255, 109, 94, 0.4);
   background: rgba(255, 109, 94, 0.16);
-}
-
-.media-link-button:hover {
-  border-color: rgba(255, 255, 255, 0.28);
-  background: rgba(255, 255, 255, 0.1);
 }
 
 .media-row {
@@ -2025,12 +2007,16 @@ button:disabled {
 
 .public-review-page {
   display: grid;
+  justify-items: center;
+  align-content: start;
   gap: 18px;
   min-height: calc(100vh - 84px);
 }
 
 .public-review-header {
-  max-width: 900px;
+  width: min(1200px, 100%);
+  max-width: 1200px;
+  text-align: center;
 }
 
 .public-review-header h1 {
@@ -2043,6 +2029,7 @@ button:disabled {
 .public-review-frame {
   display: grid;
   place-items: center;
+  justify-self: center;
   align-self: start;
   width: min(1200px, 100%);
   aspect-ratio: 16 / 9;
@@ -2336,6 +2323,11 @@ button:disabled {
   display: grid;
   gap: 10px;
   margin-top: 16px;
+}
+
+.review-link-under-comments {
+  width: 100%;
+  margin-top: 10px;
 }
 
 textarea,

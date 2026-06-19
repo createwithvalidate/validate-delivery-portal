@@ -1838,7 +1838,6 @@ function renderVideoCardGrid({
   emptyText = "No videos yet.",
   requireVersion = false,
   allowDelete = false,
-  allowShare = false,
 }) {
   if (!videos.length) return `<div class="empty compact-empty">${emptyText}</div>`;
 
@@ -1876,11 +1875,6 @@ function renderVideoCardGrid({
               ${
                 allowDelete
                   ? `<button class="media-delete-button" type="button" data-delete-video="${escapeHtml(video.id)}">Remove</button>`
-                  : ""
-              }
-              ${
-                allowShare
-                  ? `<button class="media-link-button" type="button" data-share-video="${escapeHtml(video.id)}">Review link</button>`
                   : ""
               }
             </div>
@@ -1925,7 +1919,7 @@ function renderProjectAccessList(emails = [], emptyText = "No clients have acces
   `;
 }
 
-function renderProjectImageGrid(images, { emptyText = "No project images yet.", allowDelete = false, allowShare = false } = {}) {
+function renderProjectImageGrid(images, { emptyText = "No project images yet.", allowDelete = false } = {}) {
   if (!images.length) {
     return `<div class="empty compact-empty">${emptyText}</div>`;
   }
@@ -1948,11 +1942,6 @@ function renderProjectImageGrid(images, { emptyText = "No project images yet.", 
               ${
                 allowDelete
                   ? `<button class="media-delete-button" type="button" data-delete-image="${escapeHtml(image.id)}">Remove</button>`
-                  : ""
-              }
-              ${
-                allowShare
-                  ? `<button class="media-link-button" type="button" data-share-image="${escapeHtml(image.id)}">Review link</button>`
                   : ""
               }
             </div>
@@ -3076,7 +3065,7 @@ function renderProjectDetail() {
                 <button class="primary-button small-action" id="addVideo">Add video</button>
               </div>
             </div>
-            ${renderVideoCardGrid({ videos, dataAttribute: "data-video", actionLabel: "Open", allowDelete: true, allowShare: true })}
+            ${renderVideoCardGrid({ videos, dataAttribute: "data-video", actionLabel: "Open", allowDelete: true })}
           </div>
           <div class="media-section media-section-box">
             <div class="media-section-head">
@@ -3088,7 +3077,7 @@ function renderProjectDetail() {
                 <button class="primary-button small-action" id="addImage">Add image</button>
               </div>
             </div>
-            ${renderProjectImageGrid(images, { emptyText: "No images yet.", allowDelete: true, allowShare: true })}
+            ${renderProjectImageGrid(images, { emptyText: "No images yet.", allowDelete: true })}
           </div>
         </div>
       </section>
@@ -3137,19 +3126,6 @@ function renderProjectDetail() {
       event.preventDefault();
       event.stopPropagation();
       deleteImage(button.dataset.deleteImage);
-    });
-  });
-  root.querySelectorAll("[data-share-video]").forEach((button) => {
-    button.addEventListener("click", (event) => {
-      event.stopPropagation();
-      openPublicReviewLink(button.dataset.shareVideo);
-    });
-  });
-  root.querySelectorAll("[data-share-image]").forEach((button) => {
-    button.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      openPublicReviewLink(button.dataset.shareImage);
     });
   });
 }
@@ -3536,7 +3512,6 @@ function renderReviewShell(isAdmin) {
                   <span class="chevron-down" aria-hidden="true"></span>
                 </span>
               </button>
-              <button class="ghost-button" id="shareReviewVersion" type="button">Review link</button>
               <div class="review-status-panel" id="reviewStatusPanel" hidden>
                 <div id="reviewStatusMount">${renderReviewStatusContent(version, project)}</div>
               </div>`
@@ -3575,6 +3550,7 @@ function renderReviewShell(isAdmin) {
                   <textarea name="body" placeholder="Add a comment"></textarea>
                   <button class="primary-button">Post comment</button>
                 </form>
+                ${isAdmin ? `<button class="ghost-button review-link-under-comments" id="shareReviewVersion" type="button">Review link</button>` : ""}
               </div>`
             : ""
         }
