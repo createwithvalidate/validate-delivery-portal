@@ -2586,7 +2586,11 @@ async function notifyProjectRecipients(button, targetEmails = null) {
       emails,
       emailType: "version",
     });
+    const savedSmsEmails = projectSmsRecipientEmails(project.id);
     const smsReadyEmails = emails.filter((email) => canSendSmsToAccount(accountForEmail(email)));
+    const smsEmails = emails.filter(
+      (email) => savedSmsEmails.includes(email) && canSendSmsToAccount(accountForEmail(email)),
+    );
     let smsSent = 0;
     let smsError = "";
     let smsStatus = "";
