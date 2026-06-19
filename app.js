@@ -3618,28 +3618,6 @@ function renderSettings() {
             </section>`
           : ""
       }
-
-      ${
-        isAdmin
-          ? `<section class="panel settings-card integration-settings">
-              <p class="eyebrow">Connections</p>
-              <div class="integration-list">
-                <div>
-                  <strong>Bunny Stream</strong>
-                  <span>Uploads, project collections, streaming embeds.</span>
-                </div>
-                <div>
-                  <strong>Vimeo</strong>
-                  <span>Uploads, unlisted review embeds, project folders.</span>
-                </div>
-                <div>
-                  <strong>Resend</strong>
-                  <span>Clean client invite and update emails.</span>
-                </div>
-              </div>
-            </section>`
-          : ""
-      }
     </div>
   `;
 
