@@ -305,6 +305,17 @@ function escapeHtml(value = "") {
     .replaceAll("'", "&#039;");
 }
 
+function inviteSignupUrl({ code = "", email = "", role = "client" } = {}) {
+  const url = new URL(location.href);
+  url.searchParams.delete("reset");
+  url.searchParams.set("signup", "1");
+  url.searchParams.set("invite", code);
+  url.searchParams.set("role", role);
+  if (email) url.searchParams.set("email", email);
+  url.hash = "";
+  return url.toString();
+}
+
 function loadState() {
   try {
     if (new URLSearchParams(window.location.search).has("reset")) {
@@ -1628,6 +1639,27 @@ function setAuthMode(nextMode) {
     : loginRole === "admin"
       ? "Manage clients, projects, video versions, comments, notifications, and approvals from one clean workspace."
       : "Sign in to your review dashboard to see projects, versions, comments, and approvals.";
+}
+
+function applyInviteSignupParams() {
+  const params = new URLSearchParams(window.location.search);
+  const inviteCode = String(params.get("invite") || "").trim();
+  const email = normalizeEmail(params.get("email") || "");
+  const role = params.get("role") === "admin" ? "admin" : "client";
+  const shouldSignup = params.get("signup") === "1" || Boolean(inviteCode);
+  if (!shouldSignup) return false;
+
+  setLoginRole(role);
+  setAuthMode("signup");
+  if (email) loginForm.elements.email.value = email;
+  if (inviteCode && inviteCodeField) inviteCodeField.querySelector("input").value = inviteCode;
+  params.delete("signup");
+  params.delete("invite");
+  params.delete("email");
+  params.delete("role");
+  const nextUrl = `${location.pathname}${params.toString() ? `?${params}` : ""}${location.hash || ""}`;
+  history.replaceState(null, "", nextUrl);
+  return true;
 }
 
 async function completeSignup(form) {
@@ -3597,7 +3629,7 @@ function renderSettings() {
               <div class="settings-card-head">
                 <div>
                   <p class="eyebrow">Invite generator</p>
-                  <h3>Create signup code</h3>
+                  <h3>Create signup link</h3>
                 </div>
               </div>
               <form class="settings-form" id="inviteGeneratorForm">
@@ -3612,7 +3644,7 @@ function renderSettings() {
                   Email
                   <input name="email" type="email" placeholder="person@example.com" />
                 </label>
-                <button class="primary-button" type="submit">Generate code</button>
+                <button class="primary-button" type="submit">Generate link</button>
               </form>
               <div class="invite-result" id="inviteResult" hidden></div>
             </section>`
@@ -3779,6 +3811,7 @@ function setupSettingsHandlers() {
     button.textContent = "Generating...";
     try {
       const invite = await generateInviteCode({ role, email });
+      const signupUrl = inviteSignupUrl({ code: invite.code, email: invite.email, role: invite.role });
       resultBox.hidden = false;
       resultBox.innerHTML = `
         <p class="eyebrow">${escapeHtml(invite.role)} invite</p>
@@ -3786,13 +3819,21 @@ function setupSettingsHandlers() {
           <code>${escapeHtml(invite.code)}</code>
           <button class="ghost-button small-action" type="button" id="copyInviteCode">Copy</button>
         </div>
-        <p class="muted">Send this to ${escapeHtml(invite.email)}. It can only create a ${escapeHtml(invite.role)} account for that email.</p>
+        <div class="copy-row">
+          <code>${escapeHtml(signupUrl)}</code>
+          <button class="primary-button small-action" type="button" id="copyInviteLink">Copy link</button>
+        </div>
+        <p class="muted">Send this signup link to ${escapeHtml(invite.email)}. It opens the account creator with the code already entered.</p>
       `;
       root.querySelector("#copyInviteCode")?.addEventListener("click", async () => {
         await navigator.clipboard?.writeText(invite.code);
         showToast("Invite code copied");
       });
-      showToast("Invite code generated");
+      root.querySelector("#copyInviteLink")?.addEventListener("click", async () => {
+        await navigator.clipboard?.writeText(signupUrl);
+        showToast("Signup link copied");
+      });
+      showToast("Signup link generated");
     } catch (error) {
       showToast(error.message || "Invite code could not be generated");
     } finally {
@@ -4506,6 +4547,7 @@ document.querySelector("#signOut").addEventListener("click", async () => {
 });
 async function bootPortal() {
   setLoginRole("client");
+  applyInviteSignupParams();
   watchSupabaseAuth();
   let restored = false;
   try {
