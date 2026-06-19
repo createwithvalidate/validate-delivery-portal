@@ -2003,27 +2003,89 @@ button:disabled {
 .public-review-mode .workspace {
   min-height: 100vh;
   padding: clamp(18px, 4vw, 42px);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.022), transparent 180px),
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.018) 0,
+      rgba(255, 255, 255, 0.018) 1px,
+      transparent 1px,
+      transparent 120px
+    ),
+    #050506;
 }
 
 .public-review-page {
   display: grid;
   justify-items: center;
   align-content: start;
-  gap: 18px;
+  gap: 16px;
   min-height: calc(100vh - 84px);
 }
 
-.public-review-header {
+.public-review-brand {
+  justify-self: start;
+  color: rgba(251, 251, 251, 0.76);
+  font-size: 1rem;
+  font-weight: 950;
+  letter-spacing: 0.16em;
+}
+
+.public-review-card {
+  display: grid;
+  gap: clamp(14px, 2vw, 20px);
   width: min(1200px, 100%);
-  max-width: 1200px;
+  padding: clamp(12px, 1.8vw, 22px);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 10px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.014)),
+    rgba(12, 12, 14, 0.92);
+  box-shadow:
+    0 30px 90px rgba(0, 0, 0, 0.36),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.public-review-header {
   text-align: center;
 }
 
 .public-review-header h1 {
-  margin: 8px 0 0;
-  font-size: clamp(2.5rem, 6vw, 5.8rem);
+  margin: 8px auto 0;
+  max-width: 980px;
+  font-size: clamp(2.2rem, 5.2vw, 5rem);
   letter-spacing: 0;
-  line-height: 0.92;
+  line-height: 0.94;
+}
+
+.public-review-meta,
+.public-review-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.public-review-meta {
+  margin-top: 14px;
+}
+
+.public-review-meta span,
+.public-review-footer span {
+  min-height: 26px;
+  padding: 5px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.22);
+  color: rgba(251, 251, 251, 0.62);
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.public-review-footer {
+  justify-content: space-between;
+  padding-top: 2px;
 }
 
 .public-review-frame {
@@ -2031,12 +2093,15 @@ button:disabled {
   place-items: center;
   justify-self: center;
   align-self: start;
-  width: min(1200px, 100%);
+  width: 100%;
   aspect-ratio: 16 / 9;
-  border: 1px solid rgba(255, 255, 255, 0.09);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 8px;
   overflow: hidden;
-  background: #111113;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.025), transparent 36%),
+    #0d0d0f;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.42);
 }
 
 .public-review-frame iframe,
@@ -2325,9 +2390,21 @@ button:disabled {
   margin-top: 16px;
 }
 
+.review-share-block {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.018);
+}
+
+.review-share-block .eyebrow {
+  margin: 0;
+}
+
 .review-link-under-comments {
   width: 100%;
-  margin-top: 10px;
 }
 
 textarea,

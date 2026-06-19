@@ -2047,19 +2047,29 @@ function renderPublicReview(review) {
   dashboardHero.hidden = true;
   root.innerHTML = `
     <section class="public-review-page">
-      <div class="public-review-header">
-        <p class="eyebrow">${escapeHtml(review?.media?.type === "image" ? "Image review" : "Video review")}</p>
-        <h1>${escapeHtml(review?.media?.title || "Review")}</h1>
-        ${
-          review?.version?.label
-            ? `<p class="muted">${escapeHtml(review.version.label)}</p>`
-            : review?.project?.name
-              ? `<p class="muted">${escapeHtml(review.project.name)}</p>`
-              : ""
-        }
-      </div>
-      <div class="public-review-frame">
-        ${publicReviewMediaFrame(review)}
+      <div class="public-review-brand">VALIDATE</div>
+      <div class="public-review-card">
+        <div class="public-review-header">
+          <p class="eyebrow">${escapeHtml(review?.media?.type === "image" ? "Image review" : "Video review")}</p>
+          <h1>${escapeHtml(review?.media?.title || "Review")}</h1>
+          <div class="public-review-meta">
+            ${
+              review?.version?.label
+                ? `<span>${escapeHtml(review.version.label)}</span>`
+                : review?.project?.name
+                  ? `<span>${escapeHtml(review.project.name)}</span>`
+                  : ""
+            }
+            <span>View only</span>
+          </div>
+        </div>
+        <div class="public-review-frame">
+          ${publicReviewMediaFrame(review)}
+        </div>
+        <div class="public-review-footer">
+          <span>No login needed to watch.</span>
+          ${review?.project?.name ? `<span>${escapeHtml(review.project.name)}</span>` : ""}
+        </div>
       </div>
       <button class="ghost-button public-login-button" type="button" id="publicReviewLogin">Login</button>
     </section>
@@ -3550,8 +3560,15 @@ function renderReviewShell(isAdmin) {
                   <textarea name="body" placeholder="Add a comment"></textarea>
                   <button class="primary-button">Post comment</button>
                 </form>
-                ${isAdmin ? `<button class="ghost-button review-link-under-comments" id="shareReviewVersion" type="button">Review link</button>` : ""}
-              </div>`
+              </div>
+              ${
+                isAdmin
+                  ? `<div class="review-share-block">
+                      <p class="eyebrow">Public review</p>
+                      <button class="ghost-button review-link-under-comments" id="shareReviewVersion" type="button">Review link</button>
+                    </div>`
+                  : ""
+              }`
             : ""
         }
       </aside>
