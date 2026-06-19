@@ -9,7 +9,7 @@ A client delivery portal for Validate video review, file delivery, notes, approv
 - Client projects with videos, images, and review access
 - Project sharing to selected client accounts
 - Email invites and update notifications through Resend
-- Optional SMS invites and update notifications through Twilio
+- Optional SMS invites and update notifications through TextMagic
 - Direct video uploads through Bunny Stream or Vimeo
 - Automatic Bunny collections and Vimeo folders by project name
 - Version history with latest-version review by default
@@ -72,12 +72,11 @@ VIMEO_ACCESS_TOKEN=
 RESEND_API_KEY=
 PORTAL_FROM_EMAIL=
 PORTAL_REPLY_TO_EMAIL=
-TWILIO_ACCOUNT_SID=
-TWILIO_AUTH_TOKEN=
-TWILIO_MESSAGING_SERVICE_SID=
+TEXTMAGIC_USERNAME=
+TEXTMAGIC_API_KEY=
 ```
 
-`SUPABASE_SERVICE_ROLE_KEY`, `BUNNY_STREAM_API_KEY`, `VIMEO_ACCESS_TOKEN`, `RESEND_API_KEY`, and `TWILIO_AUTH_TOKEN` must stay server-side only.
+`SUPABASE_SERVICE_ROLE_KEY`, `BUNNY_STREAM_API_KEY`, `VIMEO_ACCESS_TOKEN`, `RESEND_API_KEY`, and `TEXTMAGIC_API_KEY` must stay server-side only.
 
 ## Email
 
@@ -97,7 +96,7 @@ Optional SMS notices are sent by:
 /api/send-sms
 ```
 
-Use a Twilio Messaging Service for beta. Clients add a phone number and opt in during signup or later in Settings. Admins can then check SMS for those clients when sharing a project; clients without a saved phone number stay email-only.
+Use TextMagic for beta SMS delivery. Clients add a phone number during signup or later in Settings. Admins can then check SMS for those clients when sharing a project; clients without a saved phone number stay email-only.
 
 ## Upload Providers
 

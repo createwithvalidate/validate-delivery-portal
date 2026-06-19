@@ -101,42 +101,33 @@ function buildSmsBody(payload) {
   return compact(`${intro}${detail} Open: ${reviewUrl} Reply STOP to opt out.`);
 }
 
-async function sendTwilioSms({ to, body, statusCallbackUrl = "" }) {
-  const accountSid = process.env.TWILIO_ACCOUNT_SID || "";
-  const authTokenValue = process.env.TWILIO_AUTH_TOKEN || "";
-  const messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID || "";
+async function sendTextMagicSms({ to, body }) {
+  const username = process.env.TEXTMAGIC_USERNAME || "";
+  const apiKey = process.env.TEXTMAGIC_API_KEY || process.env.TEXTMAGIC_TOKEN || "";
 
-  if (!accountSid || !authTokenValue || !messagingServiceSid) {
-    throw new Error("Add TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_MESSAGING_SERVICE_SID in Vercel.");
+  if (!username || !apiKey) {
+    throw new Error("Add TEXTMAGIC_USERNAME and TEXTMAGIC_API_KEY in Vercel.");
   }
 
   const requestBody = new URLSearchParams({
-    MessagingServiceSid: messagingServiceSid,
-    To: to,
-    Body: body,
+    text: body,
+    phones: to,
   });
-  if (statusCallbackUrl) requestBody.set("StatusCallback", statusCallbackUrl);
 
-  const twilioResponse = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
+  const textMagicResponse = await fetch("https://rest.textmagic.com/api/v2/messages", {
     method: "POST",
     headers: {
-      Authorization: `Basic ${Buffer.from(`${accountSid}:${authTokenValue}`).toString("base64")}`,
+      "X-TM-Username": username,
+      "X-TM-Key": apiKey,
       "Content-Type": "application/x-www-form-urlencoded",
     },
     body: requestBody,
   });
-  const result = await twilioResponse.json().catch(() => ({}));
-  if (!twilioResponse.ok) {
-    throw new Error(result.message || "Twilio could not send the SMS.");
+  const result = await textMagicResponse.json().catch(() => ({}));
+  if (!textMagicResponse.ok) {
+    throw new Error(result.message || result.error || "TextMagic could not send the SMS.");
   }
   return result;
-}
-
-function requestOrigin(request) {
-  const host = request.headers["x-forwarded-host"] || request.headers.host || "";
-  if (!host) return "";
-  const proto = request.headers["x-forwarded-proto"] || "https";
-  return `${proto}://${host}`;
 }
 
 module.exports = async function handler(request, response) {
@@ -231,17 +222,19 @@ module.exports = async function handler(request, response) {
 
     const to = phoneNumber;
     const body = buildSmsBody(payload);
-    const result = await sendTwilioSms({
-      to,
-      body,
-      statusCallbackUrl: `${requestOrigin(request)}/api/twilio-status`,
-    });
-    console.info("Twilio SMS accepted", {
-      sid: result.sid,
-      status: result.status,
+    const result = await sendTextMagicSms({ to, body });
+    console.info("TextMagic SMS accepted", {
+      id: result.id || result.messageId || result.href || null,
+      status: result.status || "accepted",
       toLast4: String(to).slice(-4),
     });
-    sendJson(response, 200, { ok: true, id: result.sid, status: result.status, to });
+    sendJson(response, 200, {
+      ok: true,
+      provider: "textmagic",
+      id: result.id || result.messageId || result.href || "",
+      status: result.status || "accepted",
+      to,
+    });
   } catch (error) {
     const message = error.message || "SMS could not be sent.";
     const missingColumns = ["phone_number", "sms_opt_in", "sms_opted_out"].some((field) => message.toLowerCase().includes(field));
