@@ -2091,7 +2091,8 @@ async function openPublicReviewFromHash() {
       mediaId: params.mediaId,
     });
     if (params.versionId) search.set("versionId", params.versionId);
-    const response = await fetch(apiUrl(`/api/public-review?${search.toString()}`));
+    search.set("publicReview", "1");
+    const response = await fetch(apiUrl(`/api/client-portal?${search.toString()}`));
     const result = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(result.error || "Review link could not load.");
     renderPublicReview(result);

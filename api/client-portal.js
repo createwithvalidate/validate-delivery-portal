@@ -72,6 +72,74 @@ async function getRows(table, params, token) {
   );
 }
 
+function oneRowParams(table, filters) {
+  const params = new URLSearchParams({ select: "*", limit: "1" });
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value) params.set(key, `eq.${value}`);
+  });
+  return params;
+}
+
+async function getPublicReview(searchParams) {
+  if (!supabaseServiceRoleKey) {
+    const error = new Error("Missing SUPABASE_SERVICE_ROLE_KEY in Vercel.");
+    error.statusCode = 500;
+    throw error;
+  }
+
+  const mediaId = String(searchParams.get("mediaId") || "").trim();
+  const versionId = String(searchParams.get("versionId") || "").trim();
+  if (!mediaId) {
+    const error = new Error("Missing review link media id.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const [media] = await getRows("videos", oneRowParams("videos", { id: mediaId }), "");
+  if (!media) {
+    const error = new Error("This review link no longer exists.");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const [project] = await getRows("projects", oneRowParams("projects", { id: media.project_id }), "").catch(() => []);
+  let version = null;
+  if (media.status !== "image") {
+    const versionParams = new URLSearchParams({
+      select: "*",
+      video_id: `eq.${media.id}`,
+      order: "created_at.desc",
+      limit: "1",
+    });
+    if (versionId) versionParams.set("id", `eq.${versionId}`);
+    [version] = await getRows("video_versions", versionParams, "");
+  }
+
+  return {
+    media: {
+      id: media.id,
+      title: media.title,
+      type: media.status === "image" ? "image" : "video",
+      imageUrl: media.due || "",
+    },
+    project: project
+      ? {
+          id: project.id,
+          name: project.name,
+        }
+      : null,
+    version: version
+      ? {
+          id: version.id,
+          label: version.label,
+          provider: version.provider || "Video",
+          embedUrl: version.embed_url || "",
+          bunnyVideoId: version.bunny_video_id || "",
+        }
+      : null,
+  };
+}
+
 module.exports = async function handler(request, response) {
   if (request.method === "OPTIONS") {
     sendJson(response, 200, { ok: true });
@@ -81,6 +149,16 @@ module.exports = async function handler(request, response) {
   if (request.method !== "GET") {
     response.setHeader("Allow", "GET");
     sendJson(response, 405, { error: "Method not allowed" });
+    return;
+  }
+
+  const url = new URL(request.url, "http://localhost");
+  if (url.searchParams.get("publicReview") === "1") {
+    try {
+      sendJson(response, 200, await getPublicReview(url.searchParams));
+    } catch (error) {
+      sendJson(response, error.statusCode || 502, { error: error.message || "Review link could not load." });
+    }
     return;
   }
 
