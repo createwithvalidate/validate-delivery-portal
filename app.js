@@ -1757,13 +1757,6 @@ function projectVideos(projectId) {
     .sort((a, b) => mediaTimestampValue(b) - mediaTimestampValue(a));
 }
 
-function projectImages(projectId) {
-  if (!projectId) return [];
-  return state.videos
-    .filter((video) => video.projectId === projectId && video.status === "image")
-    .sort((a, b) => mediaTimestampValue(b) - mediaTimestampValue(a));
-}
-
 function videoVersions(videoId) {
   return state.versions
     .filter((version) => version.videoId === videoId)
@@ -1925,39 +1918,6 @@ function renderProjectAccessList(emails = [], emptyText = "No clients have acces
   `;
 }
 
-function renderProjectImageGrid(images, { emptyText = "No project images yet.", allowDelete = false } = {}) {
-  if (!images.length) {
-    return `<div class="empty compact-empty">${emptyText}</div>`;
-  }
-
-  return `
-    <div class="image-grid">
-      ${images
-        .map(
-          (image) => `
-            <div class="image-tile-wrap">
-              <a class="image-tile" href="${escapeHtml(image.due || "#")}" target="_blank" rel="noreferrer">
-                <span class="image-preview">
-                  <img src="${escapeHtml(image.due || "")}" alt="${escapeHtml(image.title)}" loading="lazy" />
-                </span>
-                <span class="image-tile-copy">
-                  <strong>${escapeHtml(image.title)}</strong>
-                  <span>Project image</span>
-                </span>
-              </a>
-              ${
-                allowDelete
-                  ? `<button class="media-delete-button" type="button" data-delete-image="${escapeHtml(image.id)}">Remove</button>`
-                  : ""
-              }
-            </div>
-          `,
-        )
-        .join("")}
-    </div>
-  `;
-}
-
 function renderMetaStrip(items = []) {
   const visibleItems = items.filter((item) => item?.show);
   if (!visibleItems.length) return "";
@@ -1996,9 +1956,9 @@ function publicReviewParamsFromHash() {
 }
 
 async function openPublicReviewLink(mediaId, versionId = "") {
-  const media = state.videos.find((item) => item.id === mediaId);
+  const media = state.videos.find((item) => item.id === mediaId && item.status !== "image");
   if (!media) return;
-  const versions = media.status === "image" ? [] : videoVersions(media.id);
+  const versions = videoVersions(media.id);
   const version = versions.find((item) => item.id === versionId) || versions[0] || null;
   const url = publicReviewUrl({ mediaId: media.id, versionId: version?.id || "" });
   const confirmed = await showPortalPrompt({
@@ -2009,7 +1969,7 @@ async function openPublicReviewLink(mediaId, versionId = "") {
         <p class="confirm-summary-kicker">Anyone with this link can view only</p>
         <h3>${escapeHtml(media.title)}</h3>
         <div class="confirm-summary-meta">
-          <span>${escapeHtml(media.status === "image" ? "Image" : version?.label || "Video")}</span>
+          <span>${escapeHtml(version?.label || "Video")}</span>
           <span>No comments or approval</span>
         </div>
       </div>
@@ -2030,12 +1990,6 @@ async function openPublicReviewLink(mediaId, versionId = "") {
 }
 
 function publicReviewMediaFrame(review) {
-  if (review?.media?.type === "image") {
-    return review.media.imageUrl
-      ? `<img src="${escapeHtml(review.media.imageUrl)}" alt="${escapeHtml(review.media.title)}" />`
-      : `<div class="review-placeholder"><span>Image unavailable</span></div>`;
-  }
-
   const version = review?.version;
   if (!version?.embedUrl) {
     return `<div class="review-placeholder"><span>Video not uploaded yet</span></div>`;
@@ -2056,7 +2010,7 @@ function renderPublicReview(review) {
       <div class="public-review-brand">VALIDATE</div>
       <div class="public-review-card">
         <div class="public-review-header">
-          <p class="eyebrow">${escapeHtml(review?.media?.type === "image" ? "Image review" : "Video review")}</p>
+          <p class="eyebrow">Video review</p>
           <h1>${escapeHtml(review?.media?.title || "Review")}</h1>
           <div class="public-review-meta">
             ${
@@ -2242,7 +2196,7 @@ async function deleteProject(projectId) {
   const veryConfirmed = await showPortalPrompt({
     eyebrow: "Final check",
     title: "Are you very sure?",
-    message: `This permanently deletes ${project.name}, its videos, versions, comments, images, and client access.`,
+    message: `This permanently deletes ${project.name}, its videos, versions, comments, and client access.`,
     confirmText: "Yes, delete permanently",
     danger: true,
   });
@@ -2308,34 +2262,6 @@ async function deleteVideo(videoId) {
   }
 
   showToast("Video removed");
-  renderProjectDetail();
-}
-
-async function deleteImage(imageId) {
-  const image = state.videos.find((item) => item.id === imageId && item.status === "image");
-  if (!image) return;
-  const confirmed = await showPortalPrompt({
-    title: `Remove ${image.title}?`,
-    message: "This removes the image from this project.",
-    confirmText: "Remove image",
-    danger: true,
-  });
-  if (!confirmed) return;
-
-  state.videos = state.videos.filter((item) => item.id !== imageId);
-  state.activity.unshift(`Removed image ${image.title}`);
-  saveState();
-
-  try {
-    const supabase = getSupabase();
-    const { data: userData } = supabase ? await supabase.auth.getUser() : { data: {} };
-    if (userData?.user) await supabase.from("videos").delete().eq("id", imageId);
-  } catch (error) {
-    console.warn("Supabase image delete failed", error);
-    showToast("Removed locally. Supabase did not delete yet.");
-  }
-
-  showToast("Image removed");
   renderProjectDetail();
 }
 
@@ -3001,7 +2927,6 @@ function renderProjects() {
                 .map(
                   (project) => {
                     const videos = projectVideos(project.id);
-                    const images = projectImages(project.id);
                     const versions = projectVersionCount(project.id);
                     const recipients = projectRecipientEmails(project.id);
                     return `
@@ -3012,7 +2937,6 @@ function renderProjects() {
                         ${renderMetaStrip([
                           { show: videos.length > 0, label: `${videos.length} video${videos.length === 1 ? "" : "s"}` },
                           { show: versions > 0, label: versionCountLabel(versions) },
-                          { show: images.length > 0, label: `${images.length} image${images.length === 1 ? "" : "s"}` },
                         ])}
                         <div class="card-footer">
                           <span class="metric">${recipients.length ? `${recipients.length} shared` : "not shared"}</span>
@@ -3050,7 +2974,6 @@ function renderProjectDetail() {
   }
 
   const videos = projectVideos(project.id);
-  const images = projectImages(project.id);
   const recipients = projectRecipientEmails(project.id);
   const isShared = recipients.length > 0;
   const latestStatus = latestProjectReviewStatus(project);
@@ -3087,18 +3010,6 @@ function renderProjectDetail() {
             </div>
             ${renderVideoCardGrid({ videos, dataAttribute: "data-video", actionLabel: "Open", allowDelete: true })}
           </div>
-          <div class="media-section media-section-box">
-            <div class="media-section-head">
-              <div>
-                <p class="eyebrow">Images</p>
-                <h3>Images</h3>
-              </div>
-              <div class="media-head-actions">
-                <button class="primary-button small-action" id="addImage">Add image</button>
-              </div>
-            </div>
-            ${renderProjectImageGrid(images, { emptyText: "No images yet.", allowDelete: true })}
-          </div>
         </div>
       </section>
       <aside class="panel stack action-panel">
@@ -3132,18 +3043,10 @@ function renderProjectDetail() {
     openProjectShareDialog();
   });
   root.querySelector("#addVideo").addEventListener("click", () => openDialog("video"));
-  root.querySelector("#addImage").addEventListener("click", () => openDialog("image"));
   root.querySelectorAll("[data-delete-video]").forEach((button) => {
     button.addEventListener("click", (event) => {
       event.stopPropagation();
       deleteVideo(button.dataset.deleteVideo);
-    });
-  });
-  root.querySelectorAll("[data-delete-image]").forEach((button) => {
-    button.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      deleteImage(button.dataset.deleteImage);
     });
   });
 }
@@ -3182,7 +3085,6 @@ function renderClientDashboard() {
             ? projects
                 .map((project) => {
                   const videos = projectVideos(project.id);
-                  const images = projectImages(project.id);
                   const versions = videos
                     .flatMap((video) => videoVersions(video.id))
                     .sort((a, b) => mediaTimestampValue(b) - mediaTimestampValue(a));
@@ -3197,12 +3099,11 @@ function renderClientDashboard() {
                       ${renderMetaStrip([
                         { show: videos.length > 0, label: `${videos.length} video${videos.length === 1 ? "" : "s"}` },
                         { show: versions.length > 0, label: versionCountLabel(versions.length) },
-                        { show: images.length > 0, label: `${images.length} image${images.length === 1 ? "" : "s"}` },
                       ])}
                       <div class="card-footer">
                         <span class="metric">${latest ? `Latest: ${escapeHtml(latest.label)}` : "Project"}</span>
-                        <button class="ghost-button" data-client-project="${project.id}" ${videos.length || images.length ? "" : "disabled"}>
-                          ${videos.length || images.length ? "Open project" : "No media yet"}
+                        <button class="ghost-button" data-client-project="${project.id}" ${videos.length ? "" : "disabled"}>
+                          ${videos.length ? "Open project" : "No videos yet"}
                         </button>
                       </div>
                     </article>
@@ -3257,14 +3158,13 @@ function renderClientProject() {
   }
 
   const videos = projectVideos(project.id);
-  const images = projectImages(project.id);
   setPageHeader(project.name, "Project review", "client");
   document.querySelector("#openCreate").hidden = true;
 
   root.innerHTML = `
     <section class="workspace-panel">
       <div class="workspace-head media-clean-head">
-        <p class="muted">${project.description || "Review videos, images, and comments."}</p>
+        <p class="muted">${project.description || "Review videos and comments."}</p>
         <button class="ghost-button" type="button" id="backClientDashboard">Back to projects</button>
       </div>
       <div class="media-library-grid">
@@ -3282,15 +3182,6 @@ function renderClientProject() {
             emptyText: "No videos are ready for this project yet.",
             requireVersion: true,
           })}
-        </div>
-        <div class="media-section media-section-box">
-          <div class="media-section-head">
-            <div>
-              <p class="eyebrow">Images</p>
-              <h3>Images</h3>
-            </div>
-          </div>
-          ${renderProjectImageGrid(images, { emptyText: "No images yet." })}
         </div>
       </div>
     </section>
@@ -4367,10 +4258,6 @@ function openDialog(intent = createIntent) {
       ["title", "Video title"],
       ["due", "Details"],
     ],
-    image: [
-      ["title", "Image title"],
-      ["imageUrl", "Image URL"],
-    ],
     version: [
       ["label", "Version label"],
       ["provider", "Provider", "Bunny Stream", "select"],
@@ -4402,7 +4289,7 @@ function openDialog(intent = createIntent) {
     return;
   }
 
-  if ((intent === "video" || intent === "version" || intent === "finalVersion" || intent === "image") && !activeProject()) {
+  if ((intent === "video" || intent === "version" || intent === "finalVersion") && !activeProject()) {
     showToast("Open a project before uploading");
     return;
   }
@@ -4412,7 +4299,6 @@ function openDialog(intent = createIntent) {
     client: "New client",
     project: "New project",
     video: "Add video",
-    image: "Add image",
     version: isFirstVersion ? "Add first version" : "Upload new version",
     finalVersion: "Upload final version",
   }[intent];
@@ -4455,8 +4341,8 @@ function openDialog(intent = createIntent) {
                   </select>`
               : name === "file"
                 ? `<input name="${name}" type="file" accept="video/*" />`
-                : name === "imageUrl" || name === "embedUrl"
-                  ? `<input name="${name}" type="url" autocomplete="off" />`
+              : name === "embedUrl"
+                ? `<input name="${name}" type="url" autocomplete="off" />`
                 : `<input name="${name}" autocomplete="off" />`
           }
         </label>
@@ -4565,20 +4451,6 @@ async function handleCreateFormSubmit(event) {
       state.selectedVersionId = "";
     }
 
-    if (createIntent === "image") {
-      const title = form.get("title") || "Project image";
-      const imageUrl = String(form.get("imageUrl") || "").trim();
-      if (!imageUrl) throw new Error("Paste an image URL before saving.");
-      state.videos.unshift({
-        id: `${slug(title) || "image"}-${nowId}`,
-        projectId: activeProject().id,
-        title,
-        status: "image",
-        due: imageUrl,
-        createdAt: new Date().toISOString(),
-      });
-    }
-
     if (createIntent === "version" || createIntent === "finalVersion") {
       const project = activeProject();
       const selectedVideoId = state.selectedVideoId;
@@ -4634,7 +4506,7 @@ async function handleCreateFormSubmit(event) {
       state.selectedVersionId = version.id;
     }
 
-    saveButton.textContent = uploadsVideo ? "Saving version..." : createIntent === "image" ? "Saving image..." : "Saving...";
+    saveButton.textContent = uploadsVideo ? "Saving version..." : "Saving...";
     await saveAndReloadPortalData();
     dialog.close();
     createForm.reset();
@@ -4647,7 +4519,7 @@ async function handleCreateFormSubmit(event) {
         : "Saved";
     showToast(successMessage);
     if (createIntent === "project") renderProjects();
-    else if (createIntent === "video" || createIntent === "image") renderProjectDetail();
+    else if (createIntent === "video") renderProjectDetail();
     else if (createIntent === "version" || createIntent === "finalVersion") renderReviewShell(state.mode === "admin");
     else renderClients();
   } catch (error) {

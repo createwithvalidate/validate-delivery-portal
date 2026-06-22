@@ -6,7 +6,7 @@ A client delivery portal for Validate video review, file delivery, notes, approv
 
 - Supabase-backed admin and client accounts
 - Admin client dashboard with client workspaces
-- Client projects with videos, images, and review access
+- Client projects with videos and review access
 - Project sharing to selected client accounts
 - Email invites and update notifications through Resend
 - Optional SMS invites and update notifications through TextMagic

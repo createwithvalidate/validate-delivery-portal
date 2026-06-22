@@ -1169,7 +1169,7 @@ button:disabled {
 
 .media-library-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.08fr) minmax(280px, 0.72fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
   align-items: start;
 }
@@ -1240,8 +1240,7 @@ button:disabled {
   gap: 10px;
 }
 
-.video-card-wrap,
-.image-tile-wrap {
+.video-card-wrap {
   position: relative;
   min-width: 0;
 }
@@ -1373,7 +1372,6 @@ button:disabled {
 }
 
 .video-card-wrap:hover .media-delete-button,
-.image-tile-wrap:hover .media-delete-button,
 .media-delete-button:focus-visible {
   opacity: 1;
   transform: translateY(0);
@@ -1674,66 +1672,6 @@ button:disabled {
 
 .media-card-head .muted {
   margin: 0;
-}
-
-.image-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 10px;
-}
-
-.image-tile {
-  display: grid;
-  gap: 10px;
-  height: 100%;
-  padding: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.075);
-  border-radius: var(--radius);
-  background: rgba(255, 255, 255, 0.026);
-  color: inherit;
-  text-decoration: none;
-  transition:
-    border-color 160ms ease,
-    background 160ms ease;
-}
-
-.image-tile:hover {
-  border-color: rgba(255, 255, 255, 0.16);
-  background: rgba(255, 255, 255, 0.045);
-}
-
-.image-preview {
-  display: block;
-  overflow: hidden;
-  aspect-ratio: 16 / 10;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.045);
-}
-
-.image-preview img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.image-tile-copy {
-  display: grid;
-  gap: 2px;
-}
-
-.image-tile-copy strong,
-.image-tile-copy span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.image-tile-copy span {
-  color: var(--dim);
-  font-size: 0.76rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .client-project-block {

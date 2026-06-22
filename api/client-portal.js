@@ -101,26 +101,27 @@ async function getPublicReview(searchParams) {
     error.statusCode = 404;
     throw error;
   }
+  if (media.status === "image") {
+    const error = new Error("Image review links are no longer supported.");
+    error.statusCode = 404;
+    throw error;
+  }
 
   const [project] = await getRows("projects", oneRowParams("projects", { id: media.project_id }), "").catch(() => []);
-  let version = null;
-  if (media.status !== "image") {
-    const versionParams = new URLSearchParams({
-      select: "*",
-      video_id: `eq.${media.id}`,
-      order: "created_at.desc",
-      limit: "1",
-    });
-    if (versionId) versionParams.set("id", `eq.${versionId}`);
-    [version] = await getRows("video_versions", versionParams, "");
-  }
+  const versionParams = new URLSearchParams({
+    select: "*",
+    video_id: `eq.${media.id}`,
+    order: "created_at.desc",
+    limit: "1",
+  });
+  if (versionId) versionParams.set("id", `eq.${versionId}`);
+  const [version] = await getRows("video_versions", versionParams, "");
 
   return {
     media: {
       id: media.id,
       title: media.title,
-      type: media.status === "image" ? "image" : "video",
-      imageUrl: media.due || "",
+      type: "video",
     },
     project: project
       ? {
