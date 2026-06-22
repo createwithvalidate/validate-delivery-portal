@@ -22,6 +22,7 @@ const seedData = {
   latestVersionByVideo: {},
   accountDirectory: [],
   portalMeta: null,
+  processingJobs: [],
 };
 
 const storeKey = "validate-delivery-portal-empty-v4";
@@ -41,6 +42,7 @@ state.projectAccessRows ??= [];
 state.latestVersionByVideo ??= {};
 state.accountDirectory ??= [];
 state.portalMeta ??= null;
+state.processingJobs ??= [];
 state.selectedVersionId ??= "";
 state.currentView ??= "clients";
 state.route ??= "clients";
@@ -77,6 +79,7 @@ const deleteClientAction = document.querySelector("#deleteClientAction");
 const sessionName = document.querySelector("#sessionName");
 const sessionEmail = document.querySelector("#sessionEmail");
 const toast = document.querySelector("#toast");
+const processingStatus = document.querySelector("#processingStatus");
 const confirmOverlay = document.querySelector("#confirmOverlay");
 const confirmEyebrow = document.querySelector("#confirmEyebrow");
 const confirmTitle = document.querySelector("#confirmTitle");
@@ -100,6 +103,8 @@ let isSavingCreateForm = false;
 let lastPortalFingerprint = "";
 let authListenerReady = false;
 let confirmHideTimer = null;
+let processingPollInterval = null;
+let processingPollInFlight = false;
 const loginBackgroundCount = 9;
 const dashboardBackgroundCount = 5;
 const loginReelSources = [
@@ -1312,6 +1317,117 @@ function showToast(message) {
   toast.textContent = message;
   toast.classList.add("show");
   window.setTimeout(() => toast.classList.remove("show"), 4200);
+}
+
+function renderProcessingStatus() {
+  if (!processingStatus) return;
+  const jobs = state.processingJobs || [];
+  const job = jobs.find((item) => item.status === "processing") || jobs[0];
+  if (!job) {
+    processingStatus.hidden = true;
+    document.body.classList.remove("processing-active");
+    return;
+  }
+
+  const isProcessing = job.status === "processing";
+  const isReady = job.status === "ready";
+  processingStatus.hidden = false;
+  document.body.classList.add("processing-active");
+  processingStatus.innerHTML = `
+    <div class="processing-status-dot ${isReady ? "is-ready" : job.status === "error" ? "is-error" : ""}"></div>
+    <div class="processing-status-copy">
+      <strong>${escapeHtml(isReady ? "Video is ready" : job.status === "error" ? "Processing needs attention" : "Still processing")}</strong>
+      <span>${escapeHtml(job.message || `${job.provider || "Video"} is finishing ${job.title || "your upload"}.`)}</span>
+    </div>
+    ${
+      isProcessing
+        ? ""
+        : `<button class="ghost-button processing-status-action" type="button" id="dismissProcessingStatus">OK</button>`
+    }
+  `;
+  processingStatus.querySelector("#dismissProcessingStatus")?.addEventListener("click", () => {
+    state.processingJobs = jobs.filter((item) => item.id !== job.id);
+    saveState();
+    renderProcessingStatus();
+    startProcessingPoller();
+  });
+}
+
+function upsertProcessingJob({ provider, videoId, title, message = "" } = {}) {
+  if (!videoId) return null;
+  const jobs = state.processingJobs || [];
+  const id = `${provider || "video"}:${videoId}`;
+  const existing = jobs.find((item) => item.id === id);
+  const job = {
+    id,
+    provider,
+    videoId,
+    title,
+    status: "processing",
+    message: message || `${provider || "Video"} is processing ${title || "your upload"}.`,
+    updatedAt: new Date().toISOString(),
+  };
+  state.processingJobs = existing
+    ? jobs.map((item) => (item.id === id ? { ...item, ...job } : item))
+    : [job, ...jobs];
+  saveState();
+  renderProcessingStatus();
+  startProcessingPoller();
+  return job;
+}
+
+function updateProcessingJob(id, updates = {}) {
+  state.processingJobs = (state.processingJobs || []).map((job) =>
+    job.id === id ? { ...job, ...updates, updatedAt: new Date().toISOString() } : job,
+  );
+  saveState();
+  renderProcessingStatus();
+  startProcessingPoller();
+}
+
+async function pollProcessingJobs() {
+  const jobs = (state.processingJobs || []).filter((job) => job.status === "processing");
+  if (!jobs.length || processingPollInFlight) return;
+  processingPollInFlight = true;
+  try {
+    await Promise.all(
+      jobs.map(async (job) => {
+        try {
+          const status = await fetchVideoProcessingStatus({ provider: job.provider, videoId: job.videoId });
+          if (status.error) {
+            updateProcessingJob(job.id, {
+              status: "error",
+              message: status.message || `${job.provider} reported a processing problem.`,
+            });
+            return;
+          }
+          if (status.ready) {
+            updateProcessingJob(job.id, {
+              status: "ready",
+              message: `${job.title || "Your video"} is ready to review.`,
+            });
+          }
+        } catch {
+          updateProcessingJob(job.id, {
+            message: `${job.provider || "Video"} is still processing. We will check again shortly.`,
+          });
+        }
+      }),
+    );
+  } finally {
+    processingPollInFlight = false;
+  }
+}
+
+function startProcessingPoller() {
+  const hasProcessingJobs = (state.processingJobs || []).some((job) => job.status === "processing");
+  window.clearInterval(processingPollInterval);
+  processingPollInterval = null;
+  renderProcessingStatus();
+  if (!hasProcessingJobs) return;
+  processingPollInterval = window.setInterval(() => {
+    if (!document.hidden) pollProcessingJobs();
+  }, 6000);
 }
 
 function showPortalPrompt({
@@ -2738,10 +2854,6 @@ async function uploadVersionFile({ provider, file, title, projectTitle, button }
     : uploadVersionFileToBunny({ file, title, projectTitle, button });
 }
 
-function delay(ms) {
-  return new Promise((resolve) => window.setTimeout(resolve, ms));
-}
-
 async function fetchVideoProcessingStatus({ provider, videoId }) {
   if (!videoId) return { ready: false, message: "Video ID is not available yet." };
   const params = new URLSearchParams({ provider, videoId });
@@ -2754,65 +2866,68 @@ async function fetchVideoProcessingStatus({ provider, videoId }) {
   return result;
 }
 
-async function offerProcessingWait({ provider, videoId, button }) {
+async function offerProcessingWait({ provider, videoId, title, button }) {
   if (!videoId) return;
+  const job = upsertProcessingJob({
+    provider,
+    videoId,
+    title,
+    message: `Checking ${provider} processing for ${title || "your upload"}.`,
+  });
   let status;
   try {
     button.textContent = "Checking processing...";
     status = await fetchVideoProcessingStatus({ provider, videoId });
   } catch (error) {
+    if (dialog?.open) dialog.close();
     const proceed = await showPortalPrompt({
       eyebrow: "Processing",
       title: "Could not check processing yet.",
-      message: "You can save this version now, or stop here and try again.",
-      confirmText: "Save now",
+      message: "This version can still be saved. We will keep checking processing in the bottom-right while you keep working.",
+      confirmText: "Save and keep checking",
       cancelText: "Stop",
     });
     if (!proceed) throw error;
     return;
   }
 
-  if (status.ready) return;
+  if (status.ready) {
+    if (job) {
+      updateProcessingJob(job.id, {
+        status: "ready",
+        message: `${title || "Your video"} is ready to review.`,
+      });
+    }
+    return;
+  }
   if (status.error) {
+    if (job) {
+      updateProcessingJob(job.id, {
+        status: "error",
+        message: status.message || `${provider} reported a processing problem.`,
+      });
+    }
     throw new Error(status.message || `${provider} reported a processing problem.`);
   }
 
-  const shouldWait = await showPortalPrompt({
+  if (job) {
+    updateProcessingJob(job.id, {
+      message: `${provider} is still processing ${title || "your upload"}. You can keep working.`,
+    });
+  }
+  if (dialog?.open) dialog.close();
+  const shouldSave = await showPortalPrompt({
     eyebrow: "Processing",
     title: "Video is still processing.",
-    message: "You can wait here for the provider to finish, or save now. It may not play or show thumbnails until processing is done.",
-    confirmText: "Wait here",
-    cancelText: "Save now",
+    message: "We will save this version now and keep checking in the bottom-right. It may not play or show thumbnails until processing is done.",
+    confirmText: "Save and keep checking",
+    cancelText: "Stop",
   });
-  if (!shouldWait) return;
-
-  for (let attempt = 1; attempt <= 30; attempt += 1) {
-    button.textContent = `Processing check ${attempt}/30`;
-    await delay(4000);
-    status = await fetchVideoProcessingStatus({ provider, videoId });
-    if (status.error) throw new Error(status.message || `${provider} reported a processing problem.`);
-    if (status.ready) {
-      await showPortalPrompt({
-        eyebrow: "Ready",
-        title: "Video is ready.",
-        message: "Processing finished and the version can be saved.",
-        confirmText: "OK",
-        showCancel: false,
-      });
-      return;
-    }
-  }
-
-  await showPortalPrompt({
-    eyebrow: "Processing",
-    title: "Still processing.",
-    message: "Saving this version now. It should become playable shortly after the provider finishes processing.",
-    confirmText: "OK",
-    showCancel: false,
-  });
+  if (!shouldSave) throw new Error("Upload saved at the provider, but the version was not saved here.");
 }
 
 function render() {
+  renderProcessingStatus();
   updateAuthView();
   if (!state.session) return;
 
@@ -4482,7 +4597,12 @@ async function handleCreateFormSubmit(event) {
         });
         embedUrl = upload.embedUrl;
         bunnyVideoId = upload.videoId || "";
-        await offerProcessingWait({ provider, videoId: bunnyVideoId, button: saveButton });
+        await offerProcessingWait({
+          provider,
+          videoId: bunnyVideoId,
+          title: video.title,
+          button: saveButton,
+        });
       }
 
       const version = {
@@ -4508,7 +4628,7 @@ async function handleCreateFormSubmit(event) {
 
     saveButton.textContent = uploadsVideo ? "Saving version..." : "Saving...";
     await saveAndReloadPortalData();
-    dialog.close();
+    if (dialog.open) dialog.close();
     createForm.reset();
     const successMessage = uploadsVideo
       ? createIntent === "finalVersion"
@@ -4595,6 +4715,7 @@ async function bootPortal() {
   setLoginRole("client");
   applyInviteSignupParams();
   watchSupabaseAuth();
+  startProcessingPoller();
   if (publicReviewParamsFromHash()) {
     await openPublicReviewFromHash();
     return;
@@ -4632,12 +4753,14 @@ window.addEventListener("hashchange", () => {
 });
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden && !state.session) startLoginReel();
+  if (!document.hidden) pollProcessingJobs();
   if (!document.hidden && state.session) {
     const isWatchingReview = currentView === "adminReview" || currentView === "clientReview";
     syncPortalData({ rerender: !isWatchingReview });
   }
 });
 window.addEventListener("focus", () => {
+  pollProcessingJobs();
   const isWatchingReview = currentView === "adminReview" || currentView === "clientReview";
   syncPortalData({ rerender: !isWatchingReview });
 });
