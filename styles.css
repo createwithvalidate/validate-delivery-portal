@@ -1626,6 +1626,98 @@ button:disabled {
   line-height: 1.45;
 }
 
+.download-package {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 16px;
+  padding: 15px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.026);
+}
+
+.download-package.compact {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 0;
+  padding: 12px;
+}
+
+.download-package .eyebrow,
+.download-package h3,
+.download-package .muted {
+  margin: 0;
+}
+
+.download-package h3 {
+  margin-top: 4px;
+  font-size: 1rem;
+  letter-spacing: 0;
+}
+
+.download-package .muted {
+  margin-top: 5px;
+}
+
+.download-picker {
+  display: grid;
+  gap: 9px;
+  min-height: 240px;
+}
+
+.download-choice {
+  position: relative;
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  align-items: center;
+  gap: 11px;
+  min-height: auto;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.download-choice input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.download-choice-dot {
+  width: 18px;
+  height: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 50%;
+}
+
+.download-choice input:checked + .download-choice-dot {
+  border-color: #fbfbfb;
+  box-shadow: inset 0 0 0 5px #fbfbfb;
+}
+
+.download-choice strong,
+.download-choice small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.download-choice small {
+  margin-top: 3px;
+  color: var(--muted);
+}
+
+.download-choice.is-disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
 .media-summary {
   display: flex;
   flex-wrap: wrap;

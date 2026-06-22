@@ -245,6 +245,43 @@ function smsStatusSummary(results = []) {
   return statuses.length === 1 ? statuses[0] : statuses.join(", ");
 }
 
+function splitProjectDescription(value = "") {
+  const raw = String(value || "");
+  const match = raw.match(/\n?<!--validate-project-meta:([^]*?)-->\s*$/);
+  if (!match) return { description: raw, meta: {} };
+
+  let meta = {};
+  try {
+    meta = JSON.parse(decodeURIComponent(match[1]));
+  } catch {
+    meta = {};
+  }
+
+  return {
+    description: raw.slice(0, match.index).trim(),
+    meta,
+  };
+}
+
+function projectDownloadMeta(project = {}) {
+  const versionIds = Array.isArray(project.downloadVersionIds)
+    ? project.downloadVersionIds.filter(Boolean)
+    : [];
+  return {
+    downloadVersionIds: [...new Set(versionIds)],
+    downloadSentAt: project.downloadSentAt || "",
+  };
+}
+
+function serializeProjectDescription(project = {}) {
+  const description = String(project.description || "").trim();
+  const meta = projectDownloadMeta(project);
+  const hasMeta = meta.downloadVersionIds.length || meta.downloadSentAt;
+  if (!hasMeta) return description || null;
+  const encoded = encodeURIComponent(JSON.stringify(meta));
+  return `${description}${description ? "\n\n" : ""}<!--validate-project-meta:${encoded}-->`;
+}
+
 function projectRecipientEmails(projectId) {
   const explicit = clientEmails(state.projectRecipients?.[projectId]);
   if (explicit.length) return explicit;
@@ -544,14 +581,19 @@ function mapClientRow(row) {
 }
 
 function mapProjectRow(row) {
+  const descriptionData = splitProjectDescription(row.description || "");
   return {
     id: row.id,
     clientId: row.client_id,
     name: row.name,
-    description: row.description || "",
+    description: descriptionData.description || "",
     status: row.status || "review",
     archived: Boolean(row.archived),
     createdAt: row.created_at || row.createdAt || "",
+    downloadVersionIds: Array.isArray(descriptionData.meta?.downloadVersionIds)
+      ? descriptionData.meta.downloadVersionIds
+      : [],
+    downloadSentAt: descriptionData.meta?.downloadSentAt || "",
   };
 }
 
@@ -931,7 +973,7 @@ async function persistPortalDataToSupabase() {
           id: item.id,
           client_id: item.clientId,
           name: item.name,
-          description: item.description || null,
+          description: serializeProjectDescription(item),
           status: item.status || "review",
           archived: Boolean(item.archived),
         })),
@@ -2019,6 +2061,83 @@ function projectVersionCount(projectId) {
   return projectVideos(projectId).reduce((total, video) => total + videoVersions(video.id).length, 0);
 }
 
+function finalVersionForVideo(video) {
+  if (!video || video.status !== "final") return null;
+  return videoVersions(video.id)[0] || null;
+}
+
+function projectDownloadItems(project = activeProject()) {
+  if (!project) return [];
+  const ids = new Set(project.downloadVersionIds || []);
+  if (!ids.size) return [];
+  return projectVideos(project.id)
+    .map((video) => {
+      const versions = videoVersions(video.id);
+      const version = versions.find((item) => ids.has(item.id));
+      return version?.embedUrl ? { video, version } : null;
+    })
+    .filter(Boolean);
+}
+
+function downloadFileName({ video, version, index = 0 } = {}) {
+  const url = String(version?.embedUrl || "");
+  const extensionMatch = url.split(/[?#]/)[0].match(/\.([a-z0-9]{2,5})$/i);
+  const extension = extensionMatch ? extensionMatch[1] : "mp4";
+  const title = slug(`${video?.title || "download"}-${version?.label || index + 1}`) || `download-${index + 1}`;
+  return `${title}.${extension}`;
+}
+
+function renderDownloadPackage(project, { compact = false } = {}) {
+  const items = projectDownloadItems(project);
+  if (!items.length) return "";
+  return `
+    <div class="download-package ${compact ? "compact" : ""}">
+      <div>
+        <p class="eyebrow">Downloads</p>
+        <h3>Final files are ready</h3>
+        <p class="muted">${items.length} final video${items.length === 1 ? "" : "s"} available to download.</p>
+      </div>
+      <button class="primary-button" type="button" data-download-project="${escapeHtml(project.id)}">Download files</button>
+    </div>
+  `;
+}
+
+async function downloadProjectFiles(projectId, button = null) {
+  const project = state.projects.find((item) => item.id === projectId);
+  const items = projectDownloadItems(project);
+  if (!items.length) {
+    showToast("No download files are ready yet");
+    return;
+  }
+
+  const originalText = button?.textContent || "";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Preparing...";
+  }
+
+  items.forEach((item, index) => {
+    window.setTimeout(() => {
+      const link = document.createElement("a");
+      link.href = item.version.embedUrl;
+      link.download = downloadFileName({ ...item, index });
+      link.target = "_blank";
+      link.rel = "noopener";
+      document.body.append(link);
+      link.click();
+      link.remove();
+    }, index * 250);
+  });
+
+  window.setTimeout(() => {
+    if (button) {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
+  }, Math.max(800, items.length * 300));
+  showToast(`Downloading ${items.length} file${items.length === 1 ? "" : "s"}`);
+}
+
 function latestProjectVersion(projectId) {
   const videoIds = new Set(projectVideos(projectId).map((video) => video.id));
   const version = state.versions.find((item) => videoIds.has(item.videoId));
@@ -2588,6 +2707,66 @@ async function shareProjectFromForm(form, button) {
   state.activity.unshift(`Updated client access for ${project.name}`);
   await savePortalData();
   return { selectedCount: emails.length, smsCount: smsEmails.length };
+}
+
+async function sendDownloadsFromForm(form, button) {
+  const project = activeProject();
+  const projectId = String(form.get("projectId") || project?.id || "");
+  const emails = projectRecipientEmails(project?.id);
+  const versionIds = [...new Set(form.getAll("downloadVersionIds").map(String).filter(Boolean))];
+
+  if (!project || project.id !== projectId) {
+    throw new Error("Open a project before sending downloads.");
+  }
+  if (!emails.length) {
+    throw new Error("Share this project with clients before sending downloads.");
+  }
+
+  const selectedItems = projectVideos(project.id)
+    .map((video) => ({ video, version: finalVersionForVideo(video) }))
+    .filter((item) => item.version?.embedUrl && versionIds.includes(item.version.id));
+
+  if (!selectedItems.length) {
+    throw new Error("Choose at least one video with a final version.");
+  }
+
+  project.downloadVersionIds = selectedItems.map((item) => item.version.id);
+  project.downloadSentAt = new Date().toISOString();
+  button.textContent = "Saving downloads...";
+  await saveAndReloadPortalData();
+
+  const savedProject = activeProject() || project;
+  let emailError = "";
+  button.textContent = "Notifying clients...";
+  try {
+    await emailProjectClient({
+      client: {
+        name: emails.length === 1 ? accountNameForEmail(emails[0]) : `${emails.length} client accounts`,
+        contact: emails.length === 1 ? accountNameForEmail(emails[0]) : "Client team",
+        email: emails.join(","),
+      },
+      project: savedProject,
+      video: { title: "Final downloads" },
+      version: {
+        label: `${selectedItems.length} final file${selectedItems.length === 1 ? "" : "s"}`,
+        note: `Final downloads are ready for ${savedProject.name}.`,
+      },
+      emails,
+      emailType: "download",
+    });
+  } catch (error) {
+    emailError = error.message || "Email could not be sent";
+  }
+
+  state.activity.unshift(
+    `Sent ${selectedItems.length} download file${selectedItems.length === 1 ? "" : "s"} for ${savedProject.name}`,
+  );
+  saveState();
+  return {
+    selectedCount: selectedItems.length,
+    clientCount: emails.length,
+    emailError,
+  };
 }
 
 async function saveProjectAdminsFromForm(form, button) {
@@ -3209,7 +3388,9 @@ function renderProjectDetail() {
       <aside class="panel stack action-panel">
         <p class="eyebrow">Delivery</p>
         <button class="primary-button" id="deliveryPrimary">${deliveryButtonLabel}</button>
+        <button class="ghost-button" id="sendDownloads">Send downloads</button>
         <p class="muted">${sendStatus}</p>
+        ${renderDownloadPackage(project, { compact: true })}
         <div class="access-block">
           <div class="access-block-head">
             <span>Clients in project</span>
@@ -3235,6 +3416,10 @@ function renderProjectDetail() {
   });
   root.querySelector("#manageClients").addEventListener("click", () => {
     openProjectShareDialog();
+  });
+  root.querySelector("#sendDownloads").addEventListener("click", () => openProjectDownloadsDialog());
+  root.querySelector("[data-download-project]")?.addEventListener("click", (event) => {
+    downloadProjectFiles(event.currentTarget.dataset.downloadProject, event.currentTarget);
   });
   root.querySelector("#addVideo").addEventListener("click", () => openDialog("video"));
   root.querySelectorAll("[data-delete-video]").forEach((button) => {
@@ -3361,6 +3546,7 @@ function renderClientProject() {
         <p class="muted">${project.description || "Review videos and comments."}</p>
         <button class="ghost-button" type="button" id="backClientDashboard">Back to projects</button>
       </div>
+      ${renderDownloadPackage(project)}
       <div class="media-library-grid">
         <div class="media-section media-section-box">
           <div class="media-section-head">
@@ -3382,6 +3568,9 @@ function renderClientProject() {
   `;
 
   root.querySelector("#backClientDashboard")?.addEventListener("click", renderClientDashboard);
+  root.querySelector("[data-download-project]")?.addEventListener("click", (event) => {
+    downloadProjectFiles(event.currentTarget.dataset.downloadProject, event.currentTarget);
+  });
   root.querySelectorAll("[data-client-video]").forEach((button) => {
     button.addEventListener("click", () => {
       const videoId = button.dataset.clientVideo;
@@ -4297,6 +4486,7 @@ function renderClientDetailStep({ name = "", summary = "" } = {}) {
   dialogSubtitle.textContent = "";
   dialogTitle.textContent = "New client";
   createSubmit.textContent = "Save";
+  createSubmit.disabled = false;
   document.querySelector("#cancelDialog").textContent = "Cancel";
   dialogFields.innerHTML = `
     <label>
@@ -4357,6 +4547,62 @@ function openProjectShareDialog() {
     selectedSms: projectSmsRecipientEmails(project.id),
     emptyText: "No client accounts found yet. Have the client create an account first.",
   });
+  dialog.showModal();
+}
+
+function openProjectDownloadsDialog() {
+  const project = activeProject();
+  if (!project) {
+    showToast("Open a project before sending downloads");
+    return;
+  }
+
+  const videos = projectVideos(project.id);
+  const selectedIds = new Set(project.downloadVersionIds || []);
+  const readyCount = videos.filter((video) => finalVersionForVideo(video)?.embedUrl).length;
+  createIntent = "downloads";
+  clientDialogStep = "";
+  createForm.reset();
+  dialogEyebrow.hidden = false;
+  dialogEyebrow.textContent = "Downloads";
+  dialogTitle.textContent = "Send downloads";
+  dialogSubtitle.hidden = false;
+  dialogSubtitle.textContent = "Choose videos to include. Only final versions will be sent to clients.";
+  createSubmit.textContent = "Send downloads";
+  createSubmit.disabled = readyCount === 0;
+  document.querySelector("#cancelDialog").textContent = "Cancel";
+  dialogFields.innerHTML = `
+    <input name="projectId" type="hidden" value="${escapeHtml(project.id)}" />
+    <div class="download-picker">
+      ${
+        videos.length
+          ? videos
+              .map((video) => {
+                const version = finalVersionForVideo(video);
+                const isReady = Boolean(version?.embedUrl);
+                const isSelected = isReady && (selectedIds.size ? selectedIds.has(version.id) : true);
+                return `
+                  <label class="download-choice ${isReady ? "" : "is-disabled"}">
+                    <input
+                      type="checkbox"
+                      name="downloadVersionIds"
+                      value="${escapeHtml(version?.id || "")}"
+                      ${isReady ? "" : "disabled"}
+                      ${isSelected ? "checked" : ""}
+                    />
+                    <span class="download-choice-dot" aria-hidden="true"></span>
+                    <span>
+                      <strong>${escapeHtml(video.title)}</strong>
+                      <small>${isReady ? `Final: ${escapeHtml(version.label)}` : "Upload final version first"}</small>
+                    </span>
+                  </label>
+                `;
+              })
+              .join("")
+          : `<div class="account-empty">Add videos before sending downloads.</div>`
+      }
+    </div>
+  `;
   dialog.showModal();
 }
 
@@ -4596,6 +4842,19 @@ async function handleCreateFormSubmit(event) {
       return;
     }
 
+    if (createIntent === "downloads") {
+      const downloadResult = await sendDownloadsFromForm(form, saveButton);
+      dialog.close();
+      createForm.reset();
+      showToast(
+        downloadResult.emailError
+          ? `Downloads saved, but email failed: ${downloadResult.emailError}`
+          : `Sent ${downloadResult.selectedCount} download file${downloadResult.selectedCount === 1 ? "" : "s"} to ${downloadResult.clientCount} client${downloadResult.clientCount === 1 ? "" : "s"}`,
+      );
+      renderProjectDetail();
+      return;
+    }
+
     if (createIntent === "admins") {
       const adminCount = await saveProjectAdminsFromForm(form, saveButton);
       dialog.close();
@@ -4627,6 +4886,8 @@ async function handleCreateFormSubmit(event) {
         status: form.get("status") || "review",
         description: form.get("description") || "Video delivery project.",
         archived: false,
+        downloadVersionIds: [],
+        downloadSentAt: "",
       });
     }
 

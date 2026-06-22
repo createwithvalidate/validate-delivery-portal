@@ -40,13 +40,20 @@ function buildEmailHtml(payload) {
   const versionNote = escapeHtml(payload.versionNote || "A new review version is ready.");
   const reviewUrl = escapeHtml(payload.reviewUrl);
   const isInvite = payload.emailType === "invite";
+  const isDownload = payload.emailType === "download";
   const headline = isInvite
     ? `${projectName} has been added to your review dashboard.`
-    : `${versionLabel} is ready for review.`;
+    : isDownload
+      ? `Final downloads are ready for ${projectName}.`
+      : `${versionLabel} is ready for review.`;
   const intro = isInvite
     ? `Hi ${clientName}, ${escapeHtml(payload.senderName || "Validate")} invited you to review <strong>${projectName}</strong>.`
-    : `Hi ${clientName}, a new cut for <strong>${projectName}</strong> is ready.`;
-  const actionLabel = isInvite ? "Open project" : "Open review";
+    : isDownload
+      ? `Hi ${clientName}, final download files are ready for <strong>${projectName}</strong>.`
+      : `Hi ${clientName}, a new cut for <strong>${projectName}</strong> is ready.`;
+  const actionLabel = isInvite ? "Open project" : isDownload ? "Open downloads" : "Open review";
+  const eyebrow = isInvite ? "Project invite" : isDownload ? "Downloads ready" : "New review version";
+  const detailLabel = isInvite ? "Project" : isDownload ? "Downloads" : "Video";
 
   return `
     <div style="margin:0;background:#060607;color:#fbfbfb;font-family:Inter,Arial,sans-serif;padding:0;">
@@ -60,7 +67,7 @@ function buildEmailHtml(payload) {
               VALIDATE
             </div>
             <p style="margin:16px 0 0;letter-spacing:0.18em;text-transform:uppercase;color:#a6a6a1;font-size:11px;font-weight:800;">
-              ${isInvite ? "Project invite" : "New review version"}
+              ${eyebrow}
             </p>
             <h1 style="font-size:34px;line-height:1.02;margin:10px 0 0;color:#fbfbfb;">
               ${headline}
@@ -73,7 +80,7 @@ function buildEmailHtml(payload) {
             </p>
 
             <div style="border:1px solid #303033;border-radius:10px;padding:18px;margin:0 0 24px;background:#171719;">
-              <p style="margin:0 0 7px;color:#9d9d98;font-size:11px;letter-spacing:0.14em;text-transform:uppercase;font-weight:800;">${isInvite ? "Project" : "Video"}</p>
+              <p style="margin:0 0 7px;color:#9d9d98;font-size:11px;letter-spacing:0.14em;text-transform:uppercase;font-weight:800;">${detailLabel}</p>
               <h2 style="margin:0 0 12px;font-size:22px;line-height:1.1;color:#fbfbfb;">${videoTitle}</h2>
               <p style="margin:0;color:#d9d9d5;line-height:1.6;">${versionNote}</p>
             </div>
@@ -110,17 +117,22 @@ function buildEmailText(payload) {
   const versionLabel = payload.versionLabel || "New version";
   const versionNote = payload.versionNote || "A new review version is ready.";
   const isInvite = payload.emailType === "invite";
+  const isDownload = payload.emailType === "download";
 
   return [
     `Hi ${clientName},`,
     "",
-    isInvite ? `${projectName} has been added to your review dashboard.` : `${versionLabel} is ready for review.`,
+    isInvite
+      ? `${projectName} has been added to your review dashboard.`
+      : isDownload
+        ? `Final downloads are ready for ${projectName}.`
+        : `${versionLabel} is ready for review.`,
     `Project: ${projectName}`,
-    isInvite ? "" : `Video: ${videoTitle}`,
+    isInvite ? "" : isDownload ? `Downloads: ${videoTitle}` : `Video: ${videoTitle}`,
     "",
     versionNote,
     "",
-    `${isInvite ? "Open project" : "Open review"}: ${payload.reviewUrl}`,
+    `${isInvite ? "Open project" : isDownload ? "Open downloads" : "Open review"}: ${payload.reviewUrl}`,
   ].filter((line) => line !== "").join("\n");
 }
 
@@ -171,6 +183,8 @@ module.exports = async function handler(request, response) {
     subject:
       payload.emailType === "invite"
         ? `${payload.projectName || "A project"} was added to your Validate dashboard`
+        : payload.emailType === "download"
+          ? `Downloads are ready for ${payload.projectName || "your project"}`
         : `${payload.videoTitle || "New video"} is ready for review`,
     html: buildEmailHtml(payload),
     text: buildEmailText(payload),
