@@ -1919,6 +1919,14 @@ function shouldRenderNativeVideo(version = {}) {
   );
 }
 
+function renderNativeReviewVideo(url, title = "Video review") {
+  return `
+    <div class="native-video-stage">
+      <video class="native-review-video" title="${escapeHtml(title)}" src="${escapeHtml(url)}" controls playsinline preload="metadata"></video>
+    </div>
+  `;
+}
+
 function videoThumbnailUrl(version) {
   if (version?.provider === "Direct URL" || version?.provider === "AWS S3") return "";
 
@@ -2119,7 +2127,7 @@ function publicReviewMediaFrame(review) {
   }
 
   return shouldRenderNativeVideo(version)
-    ? `<video src="${escapeHtml(version.embedUrl)}" controls playsinline preload="metadata"></video>`
+    ? renderNativeReviewVideo(version.embedUrl, review.media.title)
     : `<iframe title="${escapeHtml(review.media.title)}" src="${escapeHtml(version.embedUrl)}" allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;" allowfullscreen></iframe>`;
 }
 
@@ -3521,7 +3529,7 @@ function renderReviewShell(isAdmin) {
           ${
             version?.embedUrl
               ? shouldRenderNativeVideo(version)
-                ? `<video src="${escapeHtml(version.embedUrl)}" controls playsinline preload="metadata"></video>`
+                ? renderNativeReviewVideo(version.embedUrl, video.title)
                 : `<iframe title="${video.title}" src="${version.embedUrl}" allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;" allowfullscreen></iframe>`
               : `<div class="review-placeholder"><span>Awaiting video</span></div>`
           }
