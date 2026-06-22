@@ -2062,18 +2062,27 @@ function projectVersionCount(projectId) {
 }
 
 function finalVersionForVideo(video) {
-  if (!video || video.status !== "final") return null;
-  return videoVersions(video.id)[0] || null;
+  if (!video) return null;
+  const versions = videoVersions(video.id);
+  if (!versions.length) return null;
+  return versions.find((version) => /final/i.test(version.label || "")) || (video.status === "final" ? versions[0] : null);
 }
 
 function projectDownloadItems(project = activeProject()) {
   if (!project) return [];
   const ids = new Set(project.downloadVersionIds || []);
-  if (!ids.size) return [];
-  return projectVideos(project.id)
+  const selectedItems = projectVideos(project.id)
     .map((video) => {
       const versions = videoVersions(video.id);
       const version = versions.find((item) => ids.has(item.id));
+      return version?.embedUrl ? { video, version } : null;
+    })
+    .filter(Boolean);
+  if (selectedItems.length) return selectedItems;
+  if (!project.downloadSentAt) return [];
+  return projectVideos(project.id)
+    .map((video) => {
+      const version = finalVersionForVideo(video);
       return version?.embedUrl ? { video, version } : null;
     })
     .filter(Boolean);
@@ -3469,6 +3478,7 @@ function renderClientDashboard() {
                     .sort((a, b) => mediaTimestampValue(b) - mediaTimestampValue(a));
                   const latest = versions[0];
                   const hasUnseenLatest = Boolean(latest && !clientReviewEvent(latest.id, "seen"));
+                  const downloadItems = projectDownloadItems(project);
                   return `
                     <article class="card client-project-card ${hasUnseenLatest ? "has-unseen-latest" : ""}">
                       ${hasUnseenLatest ? `<span class="new-project-dot" aria-label="New update"></span>` : ""}
@@ -3481,6 +3491,11 @@ function renderClientDashboard() {
                       ])}
                       <div class="card-footer">
                         <span class="metric">${latest ? `Latest: ${escapeHtml(latest.label)}` : "Project"}</span>
+                        ${
+                          downloadItems.length
+                            ? `<button class="primary-button" data-download-project="${project.id}">Download files</button>`
+                            : ""
+                        }
                         <button class="ghost-button" data-client-project="${project.id}" ${videos.length ? "" : "disabled"}>
                           ${videos.length ? "Open project" : "No videos yet"}
                         </button>
@@ -3508,6 +3523,12 @@ function renderClientDashboard() {
     saveState();
     render();
     refreshPortalData({ openHash: true, showMissingMessage: true });
+  });
+
+  root.querySelectorAll("[data-download-project]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      downloadProjectFiles(event.currentTarget.dataset.downloadProject, event.currentTarget);
+    });
   });
 
   root.querySelectorAll("[data-client-project]").forEach((button) => {
@@ -3815,6 +3836,7 @@ function renderReviewShell(isAdmin) {
               <div id="clientReviewStatus">${renderClientReviewStatus(version)}</div>`
             : ""
         }
+        ${!isAdmin ? renderDownloadPackage(project, { compact: true }) : ""}
         ${isAdmin ? `<button class="ghost-button" id="backProject">Back to project</button>` : `<button class="ghost-button" id="backClientProject">Back to project</button>`}
         ${
           version
@@ -3879,6 +3901,11 @@ function renderReviewShell(isAdmin) {
   root
     .querySelector("#shareReviewVersion")
     ?.addEventListener("click", () => openPublicReviewLink(video.id, version?.id || ""));
+  root.querySelectorAll("[data-download-project]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      downloadProjectFiles(event.currentTarget.dataset.downloadProject, event.currentTarget);
+    });
+  });
 
   root.querySelector("#reviewStatusToggle")?.addEventListener("click", () => {
     const panel = root.querySelector("#reviewStatusPanel");
