@@ -1912,8 +1912,15 @@ function isVideoFileUrl(value = "") {
   return /\.(mp4|webm|mov)(?:$|[?#])/i.test(String(value || ""));
 }
 
+function shouldRenderNativeVideo(version = {}) {
+  return (
+    version?.provider === "AWS S3" ||
+    (version?.provider === "Direct URL" && isVideoFileUrl(version.embedUrl))
+  );
+}
+
 function videoThumbnailUrl(version) {
-  if (version?.provider === "Direct URL") return "";
+  if (version?.provider === "Direct URL" || version?.provider === "AWS S3") return "";
 
   if (version?.provider === "Vimeo") {
     const vimeoVideoId = version?.bunnyVideoId || vimeoVideoIdFromEmbedUrl(version?.embedUrl);
@@ -2111,7 +2118,7 @@ function publicReviewMediaFrame(review) {
     return `<div class="review-placeholder"><span>Video not uploaded yet</span></div>`;
   }
 
-  return version.provider === "Direct URL" && isVideoFileUrl(version.embedUrl)
+  return shouldRenderNativeVideo(version)
     ? `<video src="${escapeHtml(version.embedUrl)}" controls playsinline preload="metadata"></video>`
     : `<iframe title="${escapeHtml(review.media.title)}" src="${escapeHtml(version.embedUrl)}" allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;" allowfullscreen></iframe>`;
 }
@@ -2713,6 +2720,28 @@ async function createVimeoUploadCredentials({ title, size, projectTitle }) {
   return result;
 }
 
+async function createS3UploadCredentials({ title, file, projectTitle }) {
+  const token = await supabaseAccessToken();
+  if (!token) throw new Error("Sign in again before uploading a video.");
+  const response = await fetch(apiUrl("/api/create-s3-upload"), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      title,
+      projectTitle,
+      fileName: file.name,
+      contentType: file.type || "video/mp4",
+      size: file.size,
+    }),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || "AWS upload could not start");
+  return result;
+}
+
 function loadTusClient() {
   if (window.tus?.Upload) return Promise.resolve(window.tus);
   if (window.tusClient?.Upload) return Promise.resolve(window.tusClient);
@@ -2808,6 +2837,24 @@ async function uploadToBunny(file, credentials, onProgress) {
   });
 }
 
+async function uploadToS3(file, credentials, onProgress) {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open("PUT", credentials.uploadUrl);
+    request.setRequestHeader("Content-Type", credentials.contentType || file.type || "video/mp4");
+    request.upload.onprogress = (event) => {
+      const percent = event.lengthComputable ? Math.round((event.loaded / event.total) * 100) : 0;
+      onProgress(percent);
+    };
+    request.onerror = () => reject(new Error("AWS upload failed. Check the bucket CORS settings."));
+    request.onload = () => {
+      if (request.status >= 200 && request.status < 300) resolve(credentials);
+      else reject(new Error(`AWS upload failed with status ${request.status}`));
+    };
+    request.send(file);
+  });
+}
+
 async function uploadVersionFileToBunny({ file, title, projectTitle, button }) {
   button.textContent = "Creating Bunny video...";
   let credentials;
@@ -2848,10 +2895,34 @@ async function uploadVersionFileToVimeo({ file, title, projectTitle, button }) {
   return credentials;
 }
 
+async function uploadVersionFileToS3({ file, title, projectTitle, button }) {
+  button.textContent = "Preparing AWS upload...";
+  let credentials;
+  try {
+    credentials = await createS3UploadCredentials({ title, file, projectTitle });
+  } catch (error) {
+    throw new Error(`Could not prepare AWS upload: ${error.message}`);
+  }
+  credentials.title = title;
+  button.textContent = "Uploading 0%";
+  try {
+    await uploadToS3(file, credentials, (percent) => {
+      button.textContent = `Uploading ${percent}%`;
+    });
+  } catch (error) {
+    throw new Error(`AWS upload failed: ${error.message}`);
+  }
+  return {
+    ...credentials,
+    videoId: credentials.key,
+    embedUrl: credentials.publicUrl,
+  };
+}
+
 async function uploadVersionFile({ provider, file, title, projectTitle, button }) {
-  return provider === "Vimeo"
-    ? uploadVersionFileToVimeo({ file, title, projectTitle, button })
-    : uploadVersionFileToBunny({ file, title, projectTitle, button });
+  if (provider === "Vimeo") return uploadVersionFileToVimeo({ file, title, projectTitle, button });
+  if (provider === "AWS S3") return uploadVersionFileToS3({ file, title, projectTitle, button });
+  return uploadVersionFileToBunny({ file, title, projectTitle, button });
 }
 
 async function fetchVideoProcessingStatus({ provider, videoId }) {
@@ -3449,7 +3520,7 @@ function renderReviewShell(isAdmin) {
         <div class="video-frame">
           ${
             version?.embedUrl
-              ? version.provider === "Direct URL" && isVideoFileUrl(version.embedUrl)
+              ? shouldRenderNativeVideo(version)
                 ? `<video src="${escapeHtml(version.embedUrl)}" controls playsinline preload="metadata"></video>`
                 : `<iframe title="${video.title}" src="${version.embedUrl}" allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;" allowfullscreen></iframe>`
               : `<div class="review-placeholder"><span>Awaiting video</span></div>`
@@ -4452,6 +4523,7 @@ function openDialog(intent = createIntent) {
                 ? `<select name="${name}">
                     <option value="Bunny Stream">Bunny</option>
                     <option value="Vimeo">Vimeo</option>
+                    ${createIntent === "finalVersion" ? `<option value="AWS S3">AWS S3</option>` : ""}
                     <option value="Direct URL">URL</option>
                   </select>`
               : name === "file"
@@ -4597,12 +4669,14 @@ async function handleCreateFormSubmit(event) {
         });
         embedUrl = upload.embedUrl;
         bunnyVideoId = upload.videoId || "";
-        await offerProcessingWait({
-          provider,
-          videoId: bunnyVideoId,
-          title: video.title,
-          button: saveButton,
-        });
+        if (provider !== "AWS S3") {
+          await offerProcessingWait({
+            provider,
+            videoId: bunnyVideoId,
+            title: video.title,
+            button: saveButton,
+          });
+        }
       }
 
       const version = {
