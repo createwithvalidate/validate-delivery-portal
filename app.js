@@ -4212,11 +4212,11 @@ function renderClientDetailStep({ name = "", summary = "" } = {}) {
   dialogFields.innerHTML = `
     <label>
       Client name
-      <input name="name" placeholder="Silver Dollar City" value="${escapeHtml(name)}" />
+      <input name="name" value="${escapeHtml(name)}" autocomplete="off" />
     </label>
     <label>
       Summary
-      <textarea name="summary" placeholder="Commercial campaign and brand films.">${escapeHtml(summary)}</textarea>
+      <textarea name="summary" autocomplete="off">${escapeHtml(summary)}</textarea>
     </label>
   `;
 }
@@ -4351,35 +4351,35 @@ function openDialog(intent = createIntent) {
   clientDialogStep = intent === "client" ? "details" : "";
   const fields = {
     client: [
-      ["name", "Client name", "Silver Dollar City"],
-      ["summary", "Summary", "Commercial campaign and brand films."],
+      ["name", "Client name"],
+      ["summary", "Summary"],
     ],
     project: [
-      ["name", "Project name", "Summer Campaign"],
-      ["description", "Description", "Main spot, social cuts, and version review."],
+      ["name", "Project name"],
+      ["description", "Description"],
       ["status", "Status", "review"],
     ],
     video: [
-      ["title", "Video title", "Launch Film"],
-      ["due", "Details", "Main spot, social cut, or edit name."],
+      ["title", "Video title"],
+      ["due", "Details"],
     ],
     image: [
-      ["title", "Image title", "Storyboard frame"],
-      ["imageUrl", "Image URL", "https://example.com/frame.jpg"],
+      ["title", "Image title"],
+      ["imageUrl", "Image URL"],
     ],
     version: [
-      ["label", "Version label", "Version 4"],
+      ["label", "Version label"],
       ["provider", "Provider", "Bunny Stream", "select"],
       ["file", "Video file", ""],
-      ["embedUrl", "Video URL", "https://player.vimeo.com/video/123456789", "url"],
-      ["note", "Client comment", "What changed in this version?"],
+      ["embedUrl", "Video URL", "", "url"],
+      ["note", "Client comment"],
     ],
     finalVersion: [
       ["label", "Final cut name", "Final cut"],
       ["provider", "Provider", "Bunny Stream", "select"],
       ["file", "Video file", ""],
-      ["embedUrl", "Video URL", "https://player.vimeo.com/video/123456789", "url"],
-      ["note", "Client comment", "Final cut ready for review."],
+      ["embedUrl", "Video URL", "", "url"],
+      ["note", "Client comment"],
     ],
   };
 
@@ -4442,7 +4442,7 @@ function openDialog(intent = createIntent) {
           ${label}
           ${
             name === "note" || name === "summary" || name === "description"
-              ? `<textarea name="${name}" placeholder="${placeholder}"></textarea>`
+              ? `<textarea name="${name}" autocomplete="off"></textarea>`
               : type === "select" && name === "provider"
                 ? `<select name="${name}">
                     <option value="Bunny Stream">Bunny</option>
@@ -4452,8 +4452,8 @@ function openDialog(intent = createIntent) {
               : name === "file"
                 ? `<input name="${name}" type="file" accept="video/*" />`
                 : name === "imageUrl" || name === "embedUrl"
-                  ? `<input name="${name}" type="url" placeholder="${placeholder}" />`
-                : `<input name="${name}" placeholder="${placeholder}" />`
+                  ? `<input name="${name}" type="url" autocomplete="off" />`
+                : `<input name="${name}" autocomplete="off" />`
           }
         </label>
       `,
