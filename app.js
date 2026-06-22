@@ -3097,7 +3097,6 @@ function renderProjectDetail() {
       </section>
       <aside class="panel stack action-panel">
         <p class="eyebrow">Delivery</p>
-        <button class="ghost-button" id="uploadFinalVersion">Upload final version</button>
         <button class="primary-button" id="deliveryPrimary">${deliveryButtonLabel}</button>
         <p class="muted">${sendStatus}</p>
         <div class="access-block">
@@ -3126,7 +3125,6 @@ function renderProjectDetail() {
   root.querySelector("#manageClients").addEventListener("click", () => {
     openProjectShareDialog();
   });
-  root.querySelector("#uploadFinalVersion").addEventListener("click", openFinalVersionDialog);
   root.querySelector("#addVideo").addEventListener("click", () => openDialog("video"));
   root.querySelector("#addImage").addEventListener("click", () => openDialog("image"));
   root.querySelectorAll("[data-delete-video]").forEach((button) => {
