@@ -270,13 +270,19 @@ function projectDownloadMeta(project = {}) {
   return {
     downloadVersionIds: [...new Set(versionIds)],
     downloadSentAt: project.downloadSentAt || "",
+    downloadNotifiedAt: project.downloadNotifiedAt || "",
+    lastNotifiedVersionId: project.lastNotifiedVersionId || "",
   };
 }
 
 function serializeProjectDescription(project = {}) {
   const description = String(project.description || "").trim();
   const meta = projectDownloadMeta(project);
-  const hasMeta = meta.downloadVersionIds.length || meta.downloadSentAt;
+  const hasMeta =
+    meta.downloadVersionIds.length ||
+    meta.downloadSentAt ||
+    meta.downloadNotifiedAt ||
+    meta.lastNotifiedVersionId;
   if (!hasMeta) return description || null;
   const encoded = encodeURIComponent(JSON.stringify(meta));
   return `${description}${description ? "\n\n" : ""}<!--validate-project-meta:${encoded}-->`;
@@ -594,6 +600,8 @@ function mapProjectRow(row) {
       ? descriptionData.meta.downloadVersionIds
       : [],
     downloadSentAt: descriptionData.meta?.downloadSentAt || "",
+    downloadNotifiedAt: descriptionData.meta?.downloadNotifiedAt || "",
+    lastNotifiedVersionId: descriptionData.meta?.lastNotifiedVersionId || "",
   };
 }
 
@@ -1533,7 +1541,7 @@ function renderNotifySummary({ project, video, version }) {
 
   return `
     <div class="confirm-summary">
-      <p class="confirm-summary-kicker">Clients will be notified about</p>
+      <p class="confirm-summary-kicker">People will be notified about</p>
       <h3>${escapeHtml(video?.title || project?.name || "This video")}</h3>
       <div class="confirm-summary-meta">
         <span>${escapeHtml(version?.label || "Latest version")}</span>
@@ -1542,6 +1550,42 @@ function renderNotifySummary({ project, video, version }) {
       ${note ? `<p class="confirm-summary-note">${escapeHtml(note)}</p>` : ""}
     </div>
   `;
+}
+
+function projectPendingNotification(project = activeProject()) {
+  if (!project || !projectRecipientEmails(project.id).length) return null;
+
+  const downloadPending = Boolean(
+    project.downloadSentAt &&
+      project.downloadVersionIds?.length &&
+      project.downloadNotifiedAt !== project.downloadSentAt,
+  );
+  if (downloadPending) {
+    const itemCount = projectDownloadItems(project).length || project.downloadVersionIds.length;
+    return {
+      type: "download",
+      label: "downloads",
+      text: "Pending notifications",
+      video: { title: "Final downloads" },
+      version: {
+        label: `${itemCount} final file${itemCount === 1 ? "" : "s"}`,
+        note: `Final downloads are ready for ${project.name}.`,
+      },
+    };
+  }
+
+  const { video, version } = latestProjectVersion(project.id);
+  if (video && version && project.lastNotifiedVersionId !== version.id) {
+    return {
+      type: "version",
+      label: "latest version",
+      text: "Pending notifications",
+      video,
+      version,
+    };
+  }
+
+  return null;
 }
 
 function upsertById(collection, item) {
@@ -2791,7 +2835,7 @@ async function shareProjectFromForm(form, button) {
   return { selectedCount: emails.length, smsCount: smsEmails.length };
 }
 
-async function sendDownloadsFromForm(form, button) {
+async function prepareDownloadsFromForm(form, button) {
   const project = activeProject();
   const projectId = String(form.get("projectId") || project?.id || "");
   const emails = projectRecipientEmails(project?.id);
@@ -2801,7 +2845,7 @@ async function sendDownloadsFromForm(form, button) {
     throw new Error("Open a project before sending downloads.");
   }
   if (!emails.length) {
-    throw new Error("Share this project with clients before sending downloads.");
+    throw new Error("Share this project with clients before preparing downloads.");
   }
 
   const selectedItems = projectVideos(project.id)
@@ -2814,40 +2858,19 @@ async function sendDownloadsFromForm(form, button) {
 
   project.downloadVersionIds = selectedItems.map((item) => item.version.id);
   project.downloadSentAt = new Date().toISOString();
+  project.downloadNotifiedAt = "";
   button.textContent = "Saving downloads...";
   await saveAndReloadPortalData();
 
   const savedProject = activeProject() || project;
-  let emailError = "";
-  button.textContent = "Notifying clients...";
-  try {
-    await emailProjectClient({
-      client: {
-        name: emails.length === 1 ? accountNameForEmail(emails[0]) : `${emails.length} client accounts`,
-        contact: emails.length === 1 ? accountNameForEmail(emails[0]) : "Client team",
-        email: emails.join(","),
-      },
-      project: savedProject,
-      video: { title: "Final downloads" },
-      version: {
-        label: `${selectedItems.length} final file${selectedItems.length === 1 ? "" : "s"}`,
-        note: `Final downloads are ready for ${savedProject.name}.`,
-      },
-      emails,
-      emailType: "download",
-    });
-  } catch (error) {
-    emailError = error.message || "Email could not be sent";
-  }
 
   state.activity.unshift(
-    `Sent ${selectedItems.length} download file${selectedItems.length === 1 ? "" : "s"} for ${savedProject.name}`,
+    `Prepared ${selectedItems.length} download file${selectedItems.length === 1 ? "" : "s"} for ${savedProject.name}`,
   );
   saveState();
   return {
     selectedCount: selectedItems.length,
     clientCount: emails.length,
-    emailError,
   };
 }
 
@@ -2878,24 +2901,28 @@ async function notifyProjectRecipients(button, targetEmails = null) {
     return;
   }
 
-  const { video, version } = latestProjectVersion(project.id);
+  const pendingNotification = projectPendingNotification(project);
+  const { video: latestVideo, version: latestVersion } = latestProjectVersion(project.id);
+  const video = pendingNotification?.video || latestVideo;
+  const version = pendingNotification?.version || latestVersion;
+  const notificationType = pendingNotification?.type || "version";
   if (!video || !version) {
     showToast("Upload a version before notifying clients");
     return;
   }
 
   const confirmed = await showPortalPrompt({
-    eyebrow: "Notify clients",
-    title: "Send this update?",
+    eyebrow: "Notify people",
+    title: pendingNotification ? "Send pending notifications?" : "Send this update?",
     html: renderNotifySummary({ project, video, version }),
-    confirmText: "Notify clients",
+    confirmText: "Notify people",
     cancelText: "Cancel",
   });
   if (!confirmed) return;
 
   const originalText = button.textContent;
   button.disabled = true;
-  button.textContent = emails.length === projectRecipientEmails(project.id).length ? "Notifying clients..." : "Sending reminder...";
+  button.textContent = emails.length === projectRecipientEmails(project.id).length ? "Notifying people..." : "Sending reminder...";
 
   try {
     await emailProjectClient({
@@ -2908,7 +2935,7 @@ async function notifyProjectRecipients(button, targetEmails = null) {
       video,
       version,
       emails,
-      emailType: "version",
+      emailType: notificationType === "download" ? "download" : "version",
     });
     const savedSmsEmails = projectSmsRecipientEmails(project.id);
     const smsReadyEmails = emails.filter((email) => canSendSmsToAccount(accountForEmail(email)));
@@ -2926,7 +2953,7 @@ async function notifyProjectRecipients(button, targetEmails = null) {
           video,
           version,
           emails: smsEmails,
-          smsType: "version",
+          smsType: notificationType === "download" ? "download" : "version",
         });
         smsSent = smsResult.sent || smsEmails.length;
         smsStatus = smsStatusSummary(smsResult.results);
@@ -2935,16 +2962,22 @@ async function notifyProjectRecipients(button, targetEmails = null) {
       }
     }
     state.activity.unshift(
-      `Notified ${emails.length} client account${emails.length === 1 ? "" : "s"} about ${version.label} for ${project.name}${
+      `Notified ${emails.length} client account${emails.length === 1 ? "" : "s"} about ${notificationType === "download" ? "downloads" : version.label} for ${project.name}${
         smsSent ? ` and sent ${smsSent} SMS` : ""
       }`,
     );
+    if (notificationType === "download") {
+      project.downloadNotifiedAt = project.downloadSentAt || new Date().toISOString();
+      if (latestVersion?.id) project.lastNotifiedVersionId = latestVersion.id;
+    } else if (latestVersion?.id) {
+      project.lastNotifiedVersionId = latestVersion.id;
+    }
     await savePortalData();
     showToast(
       smsError
         ? `Email sent. SMS needs setup: ${smsError}`
         : !smsEmails.length && smsReadyEmails.length
-          ? "Email sent. SMS was not sent because no SMS clients are selected for this project."
+          ? "Email sent. SMS was not sent because no SMS recipients are selected for this project."
         : `Sent to ${emails.length} client account${emails.length === 1 ? "" : "s"}${
             smsSent ? ` / ${smsSent} SMS accepted${smsStatus ? ` (${smsStatus})` : ""}` : ""
           }`,
@@ -3431,13 +3464,16 @@ function renderProjectDetail() {
   const videos = projectVideos(project.id);
   const recipients = projectRecipientEmails(project.id);
   const isShared = recipients.length > 0;
+  const pendingNotification = projectPendingNotification(project);
   const latestStatus = latestProjectReviewStatus(project);
   const sendStatus = !isShared
     ? "Share this project when the first review is ready."
+    : pendingNotification
+      ? "Notifications are pending. Nothing sends until you click the button."
     : !latestStatus.version
       ? `${recipients.length} client account${recipients.length === 1 ? "" : "s"} ${recipients.length === 1 ? "has" : "have"} access.`
       : `${recipients.length} client account${recipients.length === 1 ? "" : "s"} will receive update notices when you choose to send them.`;
-  const deliveryButtonLabel = !isShared ? "Share project" : "Notify clients";
+  const deliveryButtonLabel = !isShared ? "Share project" : pendingNotification ? "Pending notifications" : "Notify people";
   setPageHeader(project.name);
   document.querySelector("#openCreate").textContent = "Add video";
   document.querySelector("#openCreate").hidden = true;
@@ -3470,7 +3506,7 @@ function renderProjectDetail() {
       <aside class="panel stack action-panel">
         <p class="eyebrow">Delivery</p>
         <button class="primary-button" id="deliveryPrimary">${deliveryButtonLabel}</button>
-        <button class="ghost-button" id="sendDownloads">Send downloads</button>
+        <button class="ghost-button" id="sendDownloads">Prepare downloads</button>
         <p class="muted">${sendStatus}</p>
         ${renderDownloadPackage(project, { compact: true })}
         <div class="access-block">
@@ -4617,8 +4653,8 @@ function openProjectShareDialog() {
   dialogTitle.textContent = isShared ? "Project clients" : "Share project";
   dialogSubtitle.hidden = false;
   dialogSubtitle.textContent = isShared
-    ? "Add or remove client access. Nothing sends until you press Notify clients."
-    : "Choose who can see this project. Nothing sends until you press Notify clients.";
+    ? "Add or remove client access. Nothing sends until you press Notify people."
+    : "Choose who can see this project. Nothing sends until you press Notify people.";
   createSubmit.textContent = "Save access";
   createSubmit.disabled = false;
   document.querySelector("#cancelDialog").textContent = "Cancel";
@@ -4665,10 +4701,10 @@ function openProjectDownloadsDialog() {
   createForm.reset();
   dialogEyebrow.hidden = false;
   dialogEyebrow.textContent = "Downloads";
-  dialogTitle.textContent = "Send downloads";
+  dialogTitle.textContent = "Prepare downloads";
   dialogSubtitle.hidden = false;
-  dialogSubtitle.textContent = "Choose videos to include. Only final versions will be sent to clients.";
-  createSubmit.textContent = "Send downloads";
+  dialogSubtitle.textContent = "Choose final files to make available. Email and SMS wait for the Notify people button.";
+  createSubmit.textContent = "Prepare downloads";
   createSubmit.disabled = readyCount === 0;
   document.querySelector("#cancelDialog").textContent = "Cancel";
   dialogFields.innerHTML = `
@@ -4935,7 +4971,7 @@ async function handleCreateFormSubmit(event) {
       const shareMessage = shareResult.selectedCount
         ? `Project access saved for ${shareResult.selectedCount} client${shareResult.selectedCount === 1 ? "" : "s"}${
             shareResult.smsCount ? ` / ${shareResult.smsCount} SMS-ready` : ""
-          }. Press Notify clients when you are ready.`
+          }. Press Notify people when you are ready.`
         : "Project client access cleared";
       showToast(shareMessage);
       renderProjectDetail();
@@ -4943,13 +4979,11 @@ async function handleCreateFormSubmit(event) {
     }
 
     if (createIntent === "downloads") {
-      const downloadResult = await sendDownloadsFromForm(form, saveButton);
+      const downloadResult = await prepareDownloadsFromForm(form, saveButton);
       dialog.close();
       createForm.reset();
       showToast(
-        downloadResult.emailError
-          ? `Downloads saved, but email failed: ${downloadResult.emailError}`
-          : `Sent ${downloadResult.selectedCount} download file${downloadResult.selectedCount === 1 ? "" : "s"} to ${downloadResult.clientCount} client${downloadResult.clientCount === 1 ? "" : "s"}`,
+        `Prepared ${downloadResult.selectedCount} download file${downloadResult.selectedCount === 1 ? "" : "s"}. Pending notifications for ${downloadResult.clientCount} client${downloadResult.clientCount === 1 ? "" : "s"}.`,
       );
       renderProjectDetail();
       return;
@@ -4988,6 +5022,8 @@ async function handleCreateFormSubmit(event) {
         archived: false,
         downloadVersionIds: [],
         downloadSentAt: "",
+        downloadNotifiedAt: "",
+        lastNotifiedVersionId: "",
       });
     }
 

@@ -94,10 +94,13 @@ function buildSmsBody(payload) {
   const versionNote = compact(payload.versionNote || "");
   const reviewUrl = compact(payload.reviewUrl);
   const isInvite = payload.smsType === "invite";
+  const isDownload = payload.smsType === "download";
   const intro = isInvite
     ? `Validate: ${projectName} has been shared with you.`
+    : isDownload
+      ? `Validate: final downloads are ready for ${projectName}.`
     : `Validate: ${versionLabel} is ready for ${projectName}.`;
-  const detail = isInvite ? "" : ` ${videoTitle}${versionNote ? ` - ${versionNote}` : ""}`;
+  const detail = isInvite || isDownload ? "" : ` ${videoTitle}${versionNote ? ` - ${versionNote}` : ""}`;
   return compact(`${intro}${detail} Open: ${reviewUrl} Reply STOP to opt out.`);
 }
 
