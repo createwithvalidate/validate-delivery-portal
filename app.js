@@ -2105,11 +2105,7 @@ function downloadFileName({ video, version, index = 0 } = {}) {
   return `${title}.${extension}`;
 }
 
-function downloadPackageFileName(project = {}) {
-  return `${slug(project?.name || "validate-downloads") || "validate-downloads"}-final-files.zip`;
-}
-
-function uniqueZipFiles(items = []) {
+function uniqueDownloadFiles(items = []) {
   const counts = new Map();
   return items.map((item, index) => {
     const baseName = downloadFileName({ ...item, index });
@@ -2140,111 +2136,6 @@ function renderDownloadPackage(project, { compact = false } = {}) {
   `;
 }
 
-let zipCrcTable = null;
-
-function crc32(bytes) {
-  if (!zipCrcTable) {
-    zipCrcTable = new Uint32Array(256);
-    for (let index = 0; index < 256; index += 1) {
-      let current = index;
-      for (let bit = 0; bit < 8; bit += 1) {
-        current = current & 1 ? 0xedb88320 ^ (current >>> 1) : current >>> 1;
-      }
-      zipCrcTable[index] = current >>> 0;
-    }
-  }
-
-  let crc = 0xffffffff;
-  for (let index = 0; index < bytes.length; index += 1) {
-    crc = zipCrcTable[(crc ^ bytes[index]) & 0xff] ^ (crc >>> 8);
-  }
-  return (crc ^ 0xffffffff) >>> 0;
-}
-
-function uint16(value) {
-  return [value & 0xff, (value >>> 8) & 0xff];
-}
-
-function uint32(value) {
-  return [value & 0xff, (value >>> 8) & 0xff, (value >>> 16) & 0xff, (value >>> 24) & 0xff];
-}
-
-function makeZipBlob(files = []) {
-  const encoder = new TextEncoder();
-  const chunks = [];
-  const centralDirectory = [];
-  let offset = 0;
-
-  files.forEach((file) => {
-    const nameBytes = encoder.encode(file.name);
-    const data = file.data instanceof Uint8Array ? file.data : new Uint8Array(file.data);
-    const checksum = crc32(data);
-    const localHeader = new Uint8Array([
-      ...uint32(0x04034b50),
-      ...uint16(20),
-      ...uint16(0),
-      ...uint16(0),
-      ...uint16(0),
-      ...uint16(0),
-      ...uint32(checksum),
-      ...uint32(data.length),
-      ...uint32(data.length),
-      ...uint16(nameBytes.length),
-      ...uint16(0),
-    ]);
-    chunks.push(localHeader, nameBytes, data);
-
-    centralDirectory.push({
-      nameBytes,
-      checksum,
-      size: data.length,
-      offset,
-    });
-    offset += localHeader.length + nameBytes.length + data.length;
-  });
-
-  const centralOffset = offset;
-  centralDirectory.forEach((entry) => {
-    const centralHeader = new Uint8Array([
-      ...uint32(0x02014b50),
-      ...uint16(20),
-      ...uint16(20),
-      ...uint16(0),
-      ...uint16(0),
-      ...uint16(0),
-      ...uint16(0),
-      ...uint32(entry.checksum),
-      ...uint32(entry.size),
-      ...uint32(entry.size),
-      ...uint16(entry.nameBytes.length),
-      ...uint16(0),
-      ...uint16(0),
-      ...uint16(0),
-      ...uint16(0),
-      ...uint32(0),
-      ...uint32(entry.offset),
-    ]);
-    chunks.push(centralHeader, entry.nameBytes);
-    offset += centralHeader.length + entry.nameBytes.length;
-  });
-
-  const centralSize = offset - centralOffset;
-  chunks.push(
-    new Uint8Array([
-      ...uint32(0x06054b50),
-      ...uint16(0),
-      ...uint16(0),
-      ...uint16(centralDirectory.length),
-      ...uint16(centralDirectory.length),
-      ...uint32(centralSize),
-      ...uint32(centralOffset),
-      ...uint16(0),
-    ]),
-  );
-
-  return new Blob(chunks, { type: "application/zip" });
-}
-
 function saveBlob(blob, fileName) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -2256,42 +2147,50 @@ function saveBlob(blob, fileName) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1500);
 }
 
-async function downloadFilesAsBrowserZip(project, items, button) {
-  const files = [];
-  const preparedItems = uniqueZipFiles(items);
-  for (let index = 0; index < preparedItems.length; index += 1) {
-    const item = preparedItems[index];
-    if (button) button.textContent = `Fetching ${index + 1}/${preparedItems.length}...`;
-    const response = await fetch(item.version.embedUrl);
-    if (!response.ok) throw new Error(`Could not fetch ${item.video.title}`);
-    const data = new Uint8Array(await response.arrayBuffer());
-    files.push({ name: item.fileName, data });
-  }
-  if (button) button.textContent = "Building zip...";
-  saveBlob(makeZipBlob(files), downloadPackageFileName(project));
+function waitForDownloadStep(ms = 450) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
-async function downloadFilesAsServerZip(project, items, button) {
-  if (button) button.textContent = "Preparing zip...";
+async function fetchDownloadBlobFromBrowser(item) {
+  const response = await fetch(item.version.embedUrl);
+  if (!response.ok) throw new Error(`Could not fetch ${item.video.title}`);
+  return response.blob();
+}
+
+async function fetchDownloadBlobFromServer(item) {
   const token = await supabaseAccessToken();
   if (!token) throw new Error("Sign in again before downloading files.");
-  const response = await fetch(apiUrl("/api/client-portal?downloadZip=1"), {
+  const response = await fetch(apiUrl("/api/client-portal?downloadFile=1"), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify({
-      projectName: project?.name || "Validate downloads",
-      files: uniqueZipFiles(items).map((item) => ({
-        url: item.version.embedUrl,
-        fileName: item.fileName,
-      })),
+      url: item.version.embedUrl,
+      fileName: item.fileName,
     }),
   });
   const errorResult = response.ok ? null : await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(errorResult?.error || "Download zip could not be created");
-  saveBlob(await response.blob(), downloadPackageFileName(project));
+  if (!response.ok) throw new Error(errorResult?.error || "Download could not be created");
+  return response.blob();
+}
+
+async function downloadSeparateFiles(items, button) {
+  const preparedItems = uniqueDownloadFiles(items);
+  for (let index = 0; index < preparedItems.length; index += 1) {
+    const item = preparedItems[index];
+    if (button) button.textContent = `Downloading ${index + 1}/${preparedItems.length}...`;
+    let blob;
+    try {
+      blob = await fetchDownloadBlobFromBrowser(item);
+    } catch (browserError) {
+      console.warn("Browser file download failed, trying server download", browserError);
+      blob = await fetchDownloadBlobFromServer(item);
+    }
+    saveBlob(blob, item.fileName);
+    await waitForDownloadStep();
+  }
 }
 
 async function downloadProjectFiles(projectId, button = null) {
@@ -2305,17 +2204,12 @@ async function downloadProjectFiles(projectId, button = null) {
   const originalText = button?.textContent || "";
   if (button) {
     button.disabled = true;
-    button.textContent = "Preparing zip...";
+    button.textContent = "Preparing downloads...";
   }
 
   try {
-    try {
-      await downloadFilesAsBrowserZip(project, items, button);
-    } catch (browserError) {
-      console.warn("Browser zip download failed, trying server zip", browserError);
-      await downloadFilesAsServerZip(project, items, button);
-    }
-    showToast(`Downloading ${items.length} final file${items.length === 1 ? "" : "s"}`);
+    await downloadSeparateFiles(items, button);
+    showToast(`Downloading ${items.length} file${items.length === 1 ? "" : "s"}`);
   } catch (error) {
     showToast(error.message || "Download could not be created");
   } finally {
