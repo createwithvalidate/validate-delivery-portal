@@ -272,6 +272,7 @@ function projectDownloadMeta(project = {}) {
     downloadSentAt: project.downloadSentAt || "",
     downloadNotifiedAt: project.downloadNotifiedAt || "",
     lastNotifiedVersionId: project.lastNotifiedVersionId || "",
+    pendingVersionId: project.pendingVersionId || "",
   };
 }
 
@@ -282,7 +283,8 @@ function serializeProjectDescription(project = {}) {
     meta.downloadVersionIds.length ||
     meta.downloadSentAt ||
     meta.downloadNotifiedAt ||
-    meta.lastNotifiedVersionId;
+    meta.lastNotifiedVersionId ||
+    meta.pendingVersionId;
   if (!hasMeta) return description || null;
   const encoded = encodeURIComponent(JSON.stringify(meta));
   return `${description}${description ? "\n\n" : ""}<!--validate-project-meta:${encoded}-->`;
@@ -602,6 +604,7 @@ function mapProjectRow(row) {
     downloadSentAt: descriptionData.meta?.downloadSentAt || "",
     downloadNotifiedAt: descriptionData.meta?.downloadNotifiedAt || "",
     lastNotifiedVersionId: descriptionData.meta?.lastNotifiedVersionId || "",
+    pendingVersionId: descriptionData.meta?.pendingVersionId || "",
   };
 }
 
@@ -1574,8 +1577,11 @@ function projectPendingNotification(project = activeProject()) {
     };
   }
 
-  const { video, version } = latestProjectVersion(project.id);
-  if (video && version && project.lastNotifiedVersionId !== version.id) {
+  const pendingVersionId = project.pendingVersionId || "";
+  if (pendingVersionId) {
+    const version = state.versions.find((item) => item.id === pendingVersionId);
+    const video = version ? state.videos.find((item) => item.id === version.videoId) : null;
+    if (!video || !version) return null;
     return {
       type: "version",
       label: "latest version",
@@ -2969,8 +2975,10 @@ async function notifyProjectRecipients(button, targetEmails = null) {
     if (notificationType === "download") {
       project.downloadNotifiedAt = project.downloadSentAt || new Date().toISOString();
       if (latestVersion?.id) project.lastNotifiedVersionId = latestVersion.id;
-    } else if (latestVersion?.id) {
-      project.lastNotifiedVersionId = latestVersion.id;
+      project.pendingVersionId = "";
+    } else if (version?.id) {
+      project.lastNotifiedVersionId = version.id;
+      if (project.pendingVersionId === version.id) project.pendingVersionId = "";
     }
     await savePortalData();
     showToast(
@@ -5024,6 +5032,7 @@ async function handleCreateFormSubmit(event) {
         downloadSentAt: "",
         downloadNotifiedAt: "",
         lastNotifiedVersionId: "",
+        pendingVersionId: "",
       });
     }
 
@@ -5101,6 +5110,7 @@ async function handleCreateFormSubmit(event) {
         video.status = "final";
       }
       state.versions.unshift(version);
+      project.pendingVersionId = version.id;
       state.selectedVideoId = video.id;
       state.selectedVersionId = version.id;
     }
