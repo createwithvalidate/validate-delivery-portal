@@ -1954,6 +1954,15 @@ function isVideoFileUrl(value = "") {
   return /\.(mp4|webm|mov)(?:$|[?#])/i.test(String(value || ""));
 }
 
+function isDownloadableVersion(version = {}) {
+  return Boolean(
+    version?.embedUrl &&
+      (version.provider === "AWS S3" ||
+        (version.provider === "Direct URL" && isVideoFileUrl(version.embedUrl)) ||
+        isVideoFileUrl(version.embedUrl)),
+  );
+}
+
 function shouldRenderNativeVideo(version = {}) {
   return (
     version?.provider === "AWS S3" ||
@@ -2075,7 +2084,7 @@ function projectDownloadItems(project = activeProject()) {
     .map((video) => {
       const versions = videoVersions(video.id);
       const version = versions.find((item) => ids.has(item.id));
-      return version?.embedUrl ? { video, version } : null;
+      return isDownloadableVersion(version) ? { video, version } : null;
     })
     .filter(Boolean);
   if (selectedItems.length) return selectedItems;
@@ -2083,7 +2092,7 @@ function projectDownloadItems(project = activeProject()) {
   return projectVideos(project.id)
     .map((video) => {
       const version = finalVersionForVideo(video);
-      return version?.embedUrl ? { video, version } : null;
+      return isDownloadableVersion(version) ? { video, version } : null;
     })
     .filter(Boolean);
 }
@@ -2094,6 +2103,26 @@ function downloadFileName({ video, version, index = 0 } = {}) {
   const extension = extensionMatch ? extensionMatch[1] : "mp4";
   const title = slug(`${video?.title || "download"}-${version?.label || index + 1}`) || `download-${index + 1}`;
   return `${title}.${extension}`;
+}
+
+function downloadPackageFileName(project = {}) {
+  return `${slug(project?.name || "validate-downloads") || "validate-downloads"}-final-files.zip`;
+}
+
+function uniqueZipFiles(items = []) {
+  const counts = new Map();
+  return items.map((item, index) => {
+    const baseName = downloadFileName({ ...item, index });
+    const dotIndex = baseName.lastIndexOf(".");
+    const stem = dotIndex > 0 ? baseName.slice(0, dotIndex) : baseName;
+    const extension = dotIndex > 0 ? baseName.slice(dotIndex) : "";
+    const count = counts.get(baseName) || 0;
+    counts.set(baseName, count + 1);
+    return {
+      ...item,
+      fileName: count ? `${stem}-${count + 1}${extension}` : baseName,
+    };
+  });
 }
 
 function renderDownloadPackage(project, { compact = false } = {}) {
@@ -2111,6 +2140,160 @@ function renderDownloadPackage(project, { compact = false } = {}) {
   `;
 }
 
+let zipCrcTable = null;
+
+function crc32(bytes) {
+  if (!zipCrcTable) {
+    zipCrcTable = new Uint32Array(256);
+    for (let index = 0; index < 256; index += 1) {
+      let current = index;
+      for (let bit = 0; bit < 8; bit += 1) {
+        current = current & 1 ? 0xedb88320 ^ (current >>> 1) : current >>> 1;
+      }
+      zipCrcTable[index] = current >>> 0;
+    }
+  }
+
+  let crc = 0xffffffff;
+  for (let index = 0; index < bytes.length; index += 1) {
+    crc = zipCrcTable[(crc ^ bytes[index]) & 0xff] ^ (crc >>> 8);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function uint16(value) {
+  return [value & 0xff, (value >>> 8) & 0xff];
+}
+
+function uint32(value) {
+  return [value & 0xff, (value >>> 8) & 0xff, (value >>> 16) & 0xff, (value >>> 24) & 0xff];
+}
+
+function makeZipBlob(files = []) {
+  const encoder = new TextEncoder();
+  const chunks = [];
+  const centralDirectory = [];
+  let offset = 0;
+
+  files.forEach((file) => {
+    const nameBytes = encoder.encode(file.name);
+    const data = file.data instanceof Uint8Array ? file.data : new Uint8Array(file.data);
+    const checksum = crc32(data);
+    const localHeader = new Uint8Array([
+      ...uint32(0x04034b50),
+      ...uint16(20),
+      ...uint16(0),
+      ...uint16(0),
+      ...uint16(0),
+      ...uint16(0),
+      ...uint32(checksum),
+      ...uint32(data.length),
+      ...uint32(data.length),
+      ...uint16(nameBytes.length),
+      ...uint16(0),
+    ]);
+    chunks.push(localHeader, nameBytes, data);
+
+    centralDirectory.push({
+      nameBytes,
+      checksum,
+      size: data.length,
+      offset,
+    });
+    offset += localHeader.length + nameBytes.length + data.length;
+  });
+
+  const centralOffset = offset;
+  centralDirectory.forEach((entry) => {
+    const centralHeader = new Uint8Array([
+      ...uint32(0x02014b50),
+      ...uint16(20),
+      ...uint16(20),
+      ...uint16(0),
+      ...uint16(0),
+      ...uint16(0),
+      ...uint16(0),
+      ...uint32(entry.checksum),
+      ...uint32(entry.size),
+      ...uint32(entry.size),
+      ...uint16(entry.nameBytes.length),
+      ...uint16(0),
+      ...uint16(0),
+      ...uint16(0),
+      ...uint16(0),
+      ...uint32(0),
+      ...uint32(entry.offset),
+    ]);
+    chunks.push(centralHeader, entry.nameBytes);
+    offset += centralHeader.length + entry.nameBytes.length;
+  });
+
+  const centralSize = offset - centralOffset;
+  chunks.push(
+    new Uint8Array([
+      ...uint32(0x06054b50),
+      ...uint16(0),
+      ...uint16(0),
+      ...uint16(centralDirectory.length),
+      ...uint16(centralDirectory.length),
+      ...uint32(centralSize),
+      ...uint32(centralOffset),
+      ...uint16(0),
+    ]),
+  );
+
+  return new Blob(chunks, { type: "application/zip" });
+}
+
+function saveBlob(blob, fileName) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+async function downloadFilesAsBrowserZip(project, items, button) {
+  const files = [];
+  const preparedItems = uniqueZipFiles(items);
+  for (let index = 0; index < preparedItems.length; index += 1) {
+    const item = preparedItems[index];
+    if (button) button.textContent = `Fetching ${index + 1}/${preparedItems.length}...`;
+    const response = await fetch(item.version.embedUrl);
+    if (!response.ok) throw new Error(`Could not fetch ${item.video.title}`);
+    const data = new Uint8Array(await response.arrayBuffer());
+    files.push({ name: item.fileName, data });
+  }
+  if (button) button.textContent = "Building zip...";
+  saveBlob(makeZipBlob(files), downloadPackageFileName(project));
+}
+
+async function downloadFilesAsServerZip(project, items, button) {
+  if (button) button.textContent = "Preparing zip...";
+  const token = await supabaseAccessToken();
+  if (!token) throw new Error("Sign in again before downloading files.");
+  const response = await fetch(apiUrl("/api/create-download-zip"), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      projectName: project?.name || "Validate downloads",
+      files: uniqueZipFiles(items).map((item) => ({
+        url: item.version.embedUrl,
+        fileName: item.fileName,
+      })),
+    }),
+  });
+  const errorResult = response.ok ? null : await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(errorResult?.error || "Download zip could not be created");
+  saveBlob(await response.blob(), downloadPackageFileName(project));
+}
+
 async function downloadProjectFiles(projectId, button = null) {
   const project = state.projects.find((item) => item.id === projectId);
   const items = projectDownloadItems(project);
@@ -2122,29 +2305,25 @@ async function downloadProjectFiles(projectId, button = null) {
   const originalText = button?.textContent || "";
   if (button) {
     button.disabled = true;
-    button.textContent = "Preparing...";
+    button.textContent = "Preparing zip...";
   }
 
-  items.forEach((item, index) => {
-    window.setTimeout(() => {
-      const link = document.createElement("a");
-      link.href = item.version.embedUrl;
-      link.download = downloadFileName({ ...item, index });
-      link.target = "_blank";
-      link.rel = "noopener";
-      document.body.append(link);
-      link.click();
-      link.remove();
-    }, index * 250);
-  });
-
-  window.setTimeout(() => {
+  try {
+    try {
+      await downloadFilesAsBrowserZip(project, items, button);
+    } catch (browserError) {
+      console.warn("Browser zip download failed, trying server zip", browserError);
+      await downloadFilesAsServerZip(project, items, button);
+    }
+    showToast(`Downloading ${items.length} final file${items.length === 1 ? "" : "s"}`);
+  } catch (error) {
+    showToast(error.message || "Download could not be created");
+  } finally {
     if (button) {
       button.disabled = false;
       button.textContent = originalText;
     }
-  }, Math.max(800, items.length * 300));
-  showToast(`Downloading ${items.length} file${items.length === 1 ? "" : "s"}`);
+  }
 }
 
 function latestProjectVersion(projectId) {
@@ -4586,7 +4765,7 @@ function openProjectDownloadsDialog() {
 
   const videos = projectVideos(project.id);
   const selectedIds = new Set(project.downloadVersionIds || []);
-  const readyCount = videos.filter((video) => finalVersionForVideo(video)?.embedUrl).length;
+  const readyCount = videos.filter((video) => isDownloadableVersion(finalVersionForVideo(video))).length;
   createIntent = "downloads";
   clientDialogStep = "";
   createForm.reset();
@@ -4604,9 +4783,9 @@ function openProjectDownloadsDialog() {
       ${
         videos.length
           ? videos
-              .map((video) => {
-                const version = finalVersionForVideo(video);
-                const isReady = Boolean(version?.embedUrl);
+                .map((video) => {
+                  const version = finalVersionForVideo(video);
+                  const isReady = isDownloadableVersion(version);
                 const isSelected = isReady && (selectedIds.size ? selectedIds.has(version.id) : true);
                 return `
                   <label class="download-choice ${isReady ? "" : "is-disabled"}">
@@ -4620,7 +4799,7 @@ function openProjectDownloadsDialog() {
                     <span class="download-choice-dot" aria-hidden="true"></span>
                     <span>
                       <strong>${escapeHtml(video.title)}</strong>
-                      <small>${isReady ? `Final: ${escapeHtml(version.label)}` : "Upload final version first"}</small>
+                      <small>${isReady ? `Final: ${escapeHtml(version.label)}` : "Upload a downloadable final version first"}</small>
                     </span>
                   </label>
                 `;
