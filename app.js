@@ -2275,7 +2275,7 @@ async function downloadFilesAsServerZip(project, items, button) {
   if (button) button.textContent = "Preparing zip...";
   const token = await supabaseAccessToken();
   if (!token) throw new Error("Sign in again before downloading files.");
-  const response = await fetch(apiUrl("/api/create-download-zip"), {
+  const response = await fetch(apiUrl("/api/client-portal?downloadZip=1"), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
