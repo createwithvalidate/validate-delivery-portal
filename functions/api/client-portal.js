@@ -1,0 +1,5 @@
+import { runVercelHandler } from "../_adapter.js";
+
+export function onRequest(context) {
+  return runVercelHandler(() => import("../../api/client-portal.js"), context);
+}
