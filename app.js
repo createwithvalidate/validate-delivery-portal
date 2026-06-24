@@ -2028,6 +2028,13 @@ function renderNativeReviewVideo(url, title = "Video review") {
   `;
 }
 
+function mediaPreviewUrl(url = "") {
+  const value = String(url || "").trim();
+  if (!value) return "";
+  const [base] = value.split("#");
+  return `${base}#t=0.1`;
+}
+
 function videoThumbnailUrl(version) {
   if (version?.provider === "Direct URL" || version?.provider === "AWS S3") return "";
 
@@ -2042,6 +2049,22 @@ function videoThumbnailUrl(version) {
 }
 
 function renderVideoThumbnail({ version, title }) {
+  if (shouldRenderNativeVideo(version)) {
+    return `
+      <span class="video-thumb is-video-preview">
+        <video
+          src="${escapeHtml(mediaPreviewUrl(version.embedUrl))}"
+          title="${escapeHtml(`${title} preview`)}"
+          muted
+          playsinline
+          preload="metadata"
+          onerror="this.closest('.video-thumb')?.classList.add('is-empty'); this.remove();"
+        ></video>
+        <span>No thumbnail yet</span>
+      </span>
+    `;
+  }
+
   const thumbnailUrl = videoThumbnailUrl(version);
   if (!thumbnailUrl) {
     return `
