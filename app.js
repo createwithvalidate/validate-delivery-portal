@@ -2153,6 +2153,7 @@ function finalVersionForVideo(video) {
 function projectDownloadItems(project = activeProject()) {
   if (!project) return [];
   const ids = new Set(project.downloadVersionIds || []);
+  if (!project.downloadSentAt || !ids.size) return [];
   const selectedItems = projectVideos(project.id)
     .map((video) => {
       const versions = videoVersions(video.id);
@@ -2160,14 +2161,7 @@ function projectDownloadItems(project = activeProject()) {
       return isDownloadableVersion(version) ? { video, version } : null;
     })
     .filter(Boolean);
-  if (selectedItems.length) return selectedItems;
-  if (!project.downloadSentAt) return [];
-  return projectVideos(project.id)
-    .map((video) => {
-      const version = finalVersionForVideo(video);
-      return isDownloadableVersion(version) ? { video, version } : null;
-    })
-    .filter(Boolean);
+  return selectedItems;
 }
 
 function downloadFileName({ video, version, index = 0 } = {}) {
@@ -3618,7 +3612,6 @@ function renderClientDashboard() {
                     .sort((a, b) => mediaTimestampValue(b) - mediaTimestampValue(a));
                   const latest = versions[0];
                   const hasUnseenLatest = Boolean(latest && !clientReviewEvent(latest.id, "seen"));
-                  const downloadItems = projectDownloadItems(project);
                   return `
                     <article class="card client-project-card ${hasUnseenLatest ? "has-unseen-latest" : ""}">
                       ${hasUnseenLatest ? `<span class="new-project-dot" aria-label="New update"></span>` : ""}
@@ -3631,11 +3624,6 @@ function renderClientDashboard() {
                       ])}
                       <div class="card-footer">
                         <span class="metric">${latest ? `Latest: ${escapeHtml(latest.label)}` : "Project"}</span>
-                        ${
-                          downloadItems.length
-                            ? `<button class="primary-button" data-download-project="${project.id}">Download files</button>`
-                            : ""
-                        }
                         <button class="ghost-button" data-client-project="${project.id}" ${videos.length ? "" : "disabled"}>
                           ${videos.length ? "Open project" : "No videos yet"}
                         </button>
@@ -4747,7 +4735,7 @@ function openProjectDownloadsDialog() {
                 .map((video) => {
                   const version = finalVersionForVideo(video);
                   const isReady = isDownloadableVersion(version);
-                const isSelected = isReady && (selectedIds.size ? selectedIds.has(version.id) : true);
+                  const isSelected = isReady && selectedIds.has(version.id);
                 return `
                   <label class="download-choice ${isReady ? "" : "is-disabled"}">
                     <input
