@@ -109,7 +109,7 @@ async function sendTextMagicSms({ to, body }) {
   const apiKey = process.env.TEXTMAGIC_API_KEY || process.env.TEXTMAGIC_TOKEN || "";
 
   if (!username || !apiKey) {
-    throw new Error("Add TEXTMAGIC_USERNAME and TEXTMAGIC_API_KEY in Vercel.");
+    throw new Error("Add TEXTMAGIC_USERNAME and TEXTMAGIC_API_KEY in Cloudflare.");
   }
 
   const requestBody = new URLSearchParams({
@@ -146,7 +146,7 @@ module.exports = async function handler(request, response) {
   }
 
   if (!supabaseServiceRoleKey) {
-    sendJson(response, 500, { error: "Missing SUPABASE_SERVICE_ROLE_KEY in Vercel." });
+    sendJson(response, 500, { error: "Missing SUPABASE_SERVICE_ROLE_KEY in Cloudflare." });
     return;
   }
 

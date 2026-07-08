@@ -154,7 +154,7 @@ module.exports = async function handler(request, response) {
 
   if (!apiKey || !fromEmail) {
     sendJson(response, 500, {
-      error: "Missing Resend setup. Add RESEND_API_KEY and PORTAL_FROM_EMAIL in Vercel.",
+      error: "Missing Resend setup. Add RESEND_API_KEY and PORTAL_FROM_EMAIL in Cloudflare.",
     });
     return;
   }

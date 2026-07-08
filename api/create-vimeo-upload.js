@@ -52,7 +52,7 @@ async function getRows(table, params) {
 
 async function requireAdmin(request) {
   if (!supabaseServiceRoleKey) {
-    throw makeHttpError(500, "Missing SUPABASE_SERVICE_ROLE_KEY in Vercel.");
+    throw makeHttpError(500, "Missing SUPABASE_SERVICE_ROLE_KEY in Cloudflare.");
   }
 
   const token = authToken(request);
@@ -173,7 +173,7 @@ module.exports = async function handler(request, response) {
 
   if (!accessToken) {
     sendJson(response, 500, {
-      error: "Missing Vimeo setup. Add VIMEO_ACCESS_TOKEN in Vercel.",
+      error: "Missing Vimeo setup. Add VIMEO_ACCESS_TOKEN in Cloudflare.",
     });
     return;
   }

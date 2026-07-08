@@ -54,7 +54,7 @@ async function getRows(table, params) {
 
 async function requireAdmin(request) {
   if (!supabaseServiceRoleKey) {
-    throw makeHttpError(500, "Missing SUPABASE_SERVICE_ROLE_KEY in Vercel.");
+    throw makeHttpError(500, "Missing SUPABASE_SERVICE_ROLE_KEY in Cloudflare.");
   }
 
   const token = authToken(request);
@@ -156,7 +156,7 @@ module.exports = async function handler(request, response) {
 
   if (!apiKey || !libraryId) {
     sendJson(response, 500, {
-      error: "Missing Bunny setup. Add BUNNY_STREAM_API_KEY and BUNNY_STREAM_LIBRARY_ID in Vercel.",
+      error: "Missing Bunny setup. Add BUNNY_STREAM_API_KEY and BUNNY_STREAM_LIBRARY_ID in Cloudflare.",
     });
     return;
   }

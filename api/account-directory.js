@@ -76,7 +76,7 @@ module.exports = async function handler(request, response) {
   }
 
   if (!supabaseServiceRoleKey) {
-    sendJson(response, 500, { error: "Missing SUPABASE_SERVICE_ROLE_KEY in Vercel." });
+    sendJson(response, 500, { error: "Missing SUPABASE_SERVICE_ROLE_KEY in Cloudflare." });
     return;
   }
 

@@ -54,7 +54,7 @@ async function getRows(table, params) {
 
 async function requireAdmin(request) {
   if (!supabaseServiceRoleKey) {
-    throw makeHttpError(500, "Missing SUPABASE_SERVICE_ROLE_KEY in Vercel.");
+    throw makeHttpError(500, "Missing SUPABASE_SERVICE_ROLE_KEY in Cloudflare.");
   }
 
   const token = authToken(request);
@@ -187,7 +187,7 @@ module.exports = async function handler(request, response) {
 
   if (!bucket || !region || !accessKeyId || !secretAccessKey) {
     sendJson(response, 500, {
-      error: "Missing AWS setup. Add AWS_S3_BUCKET, AWS_REGION, AWS_ACCESS_KEY_ID, and AWS_SECRET_ACCESS_KEY in Vercel.",
+      error: "Missing AWS setup. Add AWS_S3_BUCKET, AWS_REGION, AWS_ACCESS_KEY_ID, and AWS_SECRET_ACCESS_KEY in Cloudflare.",
     });
     return;
   }

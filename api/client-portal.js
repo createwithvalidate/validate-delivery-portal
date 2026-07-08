@@ -156,7 +156,7 @@ function oneRowParams(table, filters) {
 
 async function getPublicReview(searchParams) {
   if (!supabaseServiceRoleKey) {
-    const error = new Error("Missing SUPABASE_SERVICE_ROLE_KEY in Vercel.");
+    const error = new Error("Missing SUPABASE_SERVICE_ROLE_KEY in Cloudflare.");
     error.statusCode = 500;
     throw error;
   }
