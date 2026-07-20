@@ -27,8 +27,8 @@ const seedData = {
 
 const storeKey = "validate-delivery-portal-empty-v4";
 const productionOrigin = "https://validate-delivery-portal.vercel.app";
-const supabaseUrl = "https://axvnifoamejuxxqhezwr.supabase.co";
-const supabasePublishableKey = "sb_publishable_IFOVI5nvp8DdOeqAs4lNsg__Iewd4BN";
+const fallbackSupabaseUrl = "https://axvnifoamejuxxqhezwr.supabase.co";
+const fallbackSupabasePublishableKey = "sb_publishable_IFOVI5nvp8DdOeqAs4lNsg__Iewd4BN";
 const firstAdminEmail = "henry@createwithvalidate.com";
 const bunnyPullZoneHostname = "vz-72fc0187-fa1.b-cdn.net";
 const state = loadState();
@@ -113,6 +113,8 @@ const loginReelSources = [
 ];
 const reviewEventPrefix = "__validate_review_event__:";
 let supabaseClient = null;
+let supabaseConfig = null;
+let supabaseConfigPromise = null;
 
 function apiUrl(path) {
   const isLocalPreview =
@@ -393,10 +395,44 @@ function rememberView(view) {
   saveState();
 }
 
+async function loadSupabaseConfig() {
+  if (supabaseConfig) return supabaseConfig;
+  if (!supabaseConfigPromise) {
+    supabaseConfigPromise = withTimeout(
+      fetch(apiUrl("/api/public-config"), { cache: "no-store" }).then(async (response) => {
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(body.error || "Could not load portal configuration");
+        if (!body.supabaseUrl || !body.supabasePublishableKey) {
+          throw new Error("Portal configuration is missing Supabase settings");
+        }
+        supabaseConfig = {
+          supabaseUrl: body.supabaseUrl,
+          supabasePublishableKey: body.supabasePublishableKey,
+        };
+        return supabaseConfig;
+      }),
+      "Portal configuration took too long",
+      9000
+    ).catch((error) => {
+      console.warn("Supabase config load failed; using bundled fallback", error);
+      supabaseConfig = {
+        supabaseUrl: fallbackSupabaseUrl,
+        supabasePublishableKey: fallbackSupabasePublishableKey,
+      };
+      return supabaseConfig;
+    });
+  }
+  return supabaseConfigPromise;
+}
+
 function getSupabase() {
   if (supabaseClient) return supabaseClient;
+  if (!supabaseConfig) return null;
   if (!window.supabase?.createClient) return null;
-  supabaseClient = window.supabase.createClient(supabaseUrl, supabasePublishableKey, {
+  supabaseClient = window.supabase.createClient(
+    supabaseConfig.supabaseUrl,
+    supabaseConfig.supabasePublishableKey,
+    {
     auth: {
       autoRefreshToken: true,
       detectSessionInUrl: true,
@@ -404,12 +440,18 @@ function getSupabase() {
       storage: window.localStorage,
       storageKey: "validate-supabase-auth",
     },
-  });
+    }
+  );
   return supabaseClient;
 }
 
+async function ensureSupabase() {
+  await loadSupabaseConfig();
+  return getSupabase();
+}
+
 async function signInWithSupabase(email, password) {
-  const client = getSupabase();
+  const client = await ensureSupabase();
   if (!client) return null;
   const { data, error } = await client.auth.signInWithPassword({ email, password });
   if (error) throw error;
@@ -426,7 +468,7 @@ async function signInWithSupabase(email, password) {
 }
 
 async function createInviteAccount({ email, password, fullName, inviteCode, phoneNumber = "", smsOptIn = false }) {
-  const client = getSupabase();
+  const client = await ensureSupabase();
   if (!client) throw new Error("Supabase is still loading. Try again in a moment.");
   const { data, error } = await client.auth.signUp({
     email,
@@ -554,7 +596,7 @@ function watchSupabaseAuth() {
 }
 
 async function restoreSupabaseSession() {
-  const client = getSupabase();
+  const client = await ensureSupabase();
   if (!client) return false;
   const { data: sessionData, error: sessionError } = await client.auth.getSession();
   if (sessionError || !sessionData?.session?.user) return false;
@@ -5214,6 +5256,7 @@ document.querySelector("#signOut").addEventListener("click", async () => {
 async function bootPortal() {
   setLoginRole("client");
   applyInviteSignupParams();
+  await loadSupabaseConfig();
   watchSupabaseAuth();
   startProcessingPoller();
   if (publicReviewParamsFromHash()) {
