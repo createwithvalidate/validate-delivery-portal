@@ -1,5 +1,6 @@
 {
   "scripts": {
-    "build:cloudflare": "node scripts/build-cloudflare.mjs"
+    "build:cloudflare": "node scripts/build-cloudflare.mjs",
+    "test": "node --test"
   }
 }

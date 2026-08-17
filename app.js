@@ -1912,6 +1912,66 @@ function applyInviteSignupParams() {
   return true;
 }
 
+function portalHandoffParams() {
+  if (!window.location.hash.startsWith("#portal-sso?")) return null;
+  const params = new URLSearchParams(window.location.hash.slice("#portal-sso?".length));
+  const payload = String(params.get("payload") || "");
+  const signature = String(params.get("signature") || "");
+  return payload && signature ? { payload, signature } : null;
+}
+
+function clearPortalHandoffParams() {
+  if (!window.location.hash.startsWith("#portal-sso?")) return;
+  history.replaceState(null, "", `${location.pathname}${location.search}`);
+}
+
+async function redeemPortalHandoff(handoff) {
+  if (!handoff) return false;
+
+  let result;
+  try {
+    const response = await withTimeout(
+      fetch("/api/portal-sso", {
+        method: "POST",
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(handoff),
+      }),
+      "Delivery Portal sign-in took too long.",
+      12000,
+    );
+    result = await response.json().catch(() => ({}));
+    if (!response.ok || !result?.success || !result?.session) {
+      throw new Error(result?.error || "The main portal session could not be opened here.");
+    }
+  } finally {
+    clearPortalHandoffParams();
+  }
+
+  const client = await ensureSupabase();
+  if (!client) throw new Error("Supabase is still loading. Try again in a moment.");
+  const { data, error } = await client.auth.setSession({
+    access_token: result.session.accessToken,
+    refresh_token: result.session.refreshToken,
+  });
+  if (error || !data?.user) throw error || new Error("Delivery Portal session could not be saved.");
+
+  const profile = await getCurrentProfile(data.user).catch((profileError) => {
+    console.warn("Profile load after portal handoff failed", profileError);
+    return fallbackProfileForUser(data.user);
+  });
+  applyAccountSession(data.user, profile);
+  if (state.session?.role !== "admin") {
+    await client.auth.signOut().catch(() => {});
+    clearAccountSession();
+    throw new Error("The linked Delivery Portal account is not an admin.");
+  }
+  state.portalLoading = true;
+  saveState();
+  return true;
+}
+
 async function completeSignup(form) {
   const email = String(form.get("email") || "").trim();
   const password = String(form.get("password") || "").trim();
@@ -5256,6 +5316,7 @@ document.querySelector("#signOut").addEventListener("click", async () => {
 async function bootPortal() {
   setLoginRole("client");
   applyInviteSignupParams();
+  const portalHandoff = portalHandoffParams();
   await loadSupabaseConfig();
   watchSupabaseAuth();
   startProcessingPoller();
@@ -5265,14 +5326,18 @@ async function bootPortal() {
   }
   let restored = false;
   try {
-    restored = await restoreSupabaseSession();
+    restored = portalHandoff
+      ? await redeemPortalHandoff(portalHandoff)
+      : await restoreSupabaseSession();
     if (!restored && state.session) {
       clearAccountSession();
     }
     if (restored) startCrossDeviceSync();
   } catch (error) {
     console.warn("Supabase startup load failed", error);
-    showToast(error.message || "Could not load saved portal data");
+    if (portalHandoff) clearPortalHandoffParams();
+    clearAccountSession();
+    showToast(error.message || "Could not open the Delivery Portal session");
   }
   render();
   if (restored) {

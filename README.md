@@ -5,6 +5,7 @@ A client delivery portal for Validate video review, file delivery, notes, approv
 ## Current Features
 
 - Supabase-backed admin and client accounts
+- Main Validate Portal admin SSO, with direct employee/client login preserved
 - Admin client dashboard with client workspaces
 - Client projects with videos and review access
 - Project sharing to selected client accounts
@@ -66,6 +67,8 @@ Set these in Vercel Production:
 SUPABASE_URL=
 SUPABASE_PUBLISHABLE_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
+PORTAL_DELIVERY_SSO_SECRET=
+DELIVERY_SSO_EMAIL=henry@createwithvalidate.com
 BUNNY_STREAM_LIBRARY_ID=
 BUNNY_STREAM_API_KEY=
 VIMEO_ACCESS_TOKEN=
@@ -77,6 +80,8 @@ TEXTMAGIC_API_KEY=
 ```
 
 `SUPABASE_SERVICE_ROLE_KEY`, `BUNNY_STREAM_API_KEY`, `VIMEO_ACCESS_TOKEN`, `RESEND_API_KEY`, and `TEXTMAGIC_API_KEY` must stay server-side only.
+
+Set the same random value of at least 32 characters for `PORTAL_DELIVERY_SSO_SECRET` in both the main portal and Delivery Portal deployments. `DELIVERY_SSO_EMAIL` maps an authenticated main-portal admin to an existing Delivery Portal admin account. Direct Delivery Portal email/password login remains available for employees and clients.
 
 ## Email
 
