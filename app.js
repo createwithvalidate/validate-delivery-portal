@@ -4738,6 +4738,64 @@ function setupAccountPicker({
     });
 }
 
+// ─── Shared portal client registry (clients_v2) ───
+// The portal keeps one global client list; the delivery portal reads it for
+// name suggestions and writes new clients back so every app stays in sync.
+// Works when the app is served on createwithvalidate.com with an active
+// portal session; silently does nothing otherwise.
+let portalRegistryCompanies = [];
+
+async function loadPortalRegistryCompanies() {
+  try {
+    const res = await fetch("/portal/api/settings/clients_v2", {
+      headers: { Accept: "application/json" },
+    });
+    if (!res.ok) return portalRegistryCompanies;
+    const data = await res.json();
+    if (Array.isArray(data?.value)) {
+      portalRegistryCompanies = data.value.map((r) => r.company).filter(Boolean);
+    }
+  } catch {
+    /* not reachable outside the domain — fine */
+  }
+  return portalRegistryCompanies;
+}
+
+async function upsertPortalRegistryCompany(company) {
+  if (!company) return;
+  try {
+    const res = await fetch("/portal/api/settings/clients_v2", {
+      headers: { Accept: "application/json" },
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    const registry = Array.isArray(data?.value) ? data.value : [];
+    if (registry.some((r) => (r.company || "").toLowerCase() === company.toLowerCase())) return;
+    registry.push({
+      id: `client_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      company,
+      address: "",
+      website: "",
+      phone: "",
+      notes: "Added from Delivery Portal",
+      contacts: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    await fetch("/portal/api/settings/clients_v2", {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        "X-Portal-Request": "1",
+      },
+      body: JSON.stringify({ value: registry }),
+    });
+  } catch {
+    /* best-effort */
+  }
+}
+
 function renderClientDetailStep({ name = "", summary = "" } = {}) {
   clientDialogStep = "details";
   dialogEyebrow.hidden = false;
@@ -4751,13 +4809,22 @@ function renderClientDetailStep({ name = "", summary = "" } = {}) {
   dialogFields.innerHTML = `
     <label>
       Client name
-      <input name="name" value="${escapeHtml(name)}" autocomplete="off" />
+      <input name="name" value="${escapeHtml(name)}" autocomplete="off" list="portalRegistryCompanies" />
+      <datalist id="portalRegistryCompanies"></datalist>
     </label>
     <label>
       Summary
       <textarea name="summary" autocomplete="off">${escapeHtml(summary)}</textarea>
     </label>
   `;
+  loadPortalRegistryCompanies().then((companies) => {
+    const datalist = document.querySelector("#portalRegistryCompanies");
+    if (datalist) {
+      datalist.innerHTML = companies
+        .map((company) => `<option value="${escapeHtml(company)}"></option>`)
+        .join("");
+    }
+  });
 }
 
 function openProjectShareDialog() {
@@ -5132,6 +5199,8 @@ async function handleCreateFormSubmit(event) {
         summary: form.get("summary") || "New client workspace.",
         archived: false,
       });
+      // Keep the shared portal client registry in sync.
+      upsertPortalRegistryCompany(name);
     }
 
     if (createIntent === "project") {
