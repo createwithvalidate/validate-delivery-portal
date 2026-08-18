@@ -2,6 +2,8 @@
 
 A client delivery portal for Validate video review, file delivery, notes, approvals, version history, and client notifications.
 
+Production URL: `https://createwithvalidate.com/delivery/`. The Cloudflare Pages domain remains the private deployment origin behind the checked-in path router.
+
 ## Current Features
 
 - Supabase-backed admin and client accounts
@@ -135,10 +137,10 @@ Push changes to GitHub, then deploy production with Vercel:
 .tools/vercel-cli/node_modules/.bin/vercel --prod --yes
 ```
 
-Production URL:
+Pages origin:
 
 ```txt
-https://validate-delivery-portal.vercel.app
+https://validate-delivery-portal.pages.dev
 ```
 
 ## Beta Notes

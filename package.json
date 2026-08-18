@@ -1,6 +1,7 @@
 {
   "scripts": {
     "build:cloudflare": "node scripts/build-cloudflare.mjs",
+    "deploy:router": "wrangler deploy --config wrangler.router.toml",
     "test": "node --test"
   }
 }

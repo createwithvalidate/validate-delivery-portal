@@ -26,7 +26,7 @@ const seedData = {
 };
 
 const storeKey = "validate-delivery-portal-empty-v4";
-const productionOrigin = "https://validate-delivery-portal.vercel.app";
+const productionOrigin = "https://createwithvalidate.com/delivery";
 const fallbackSupabaseUrl = "https://axvnifoamejuxxqhezwr.supabase.co";
 const fallbackSupabasePublishableKey = "sb_publishable_IFOVI5nvp8DdOeqAs4lNsg__Iewd4BN";
 const firstAdminEmail = "henry@createwithvalidate.com";
@@ -121,7 +121,10 @@ function apiUrl(path) {
     location.protocol === "file:" ||
     location.hostname === "localhost" ||
     location.hostname === "127.0.0.1";
-  return `${isLocalPreview ? productionOrigin : ""}${path}`;
+  const deliveryBasePath = location.pathname === "/delivery" || location.pathname.startsWith("/delivery/")
+    ? "/delivery"
+    : "";
+  return `${isLocalPreview ? productionOrigin : deliveryBasePath}${path}`;
 }
 
 function withTimeout(promise, message = "Request took too long", timeoutMs = 9000) {
@@ -1931,7 +1934,7 @@ async function redeemPortalHandoff(handoff) {
   let result;
   try {
     const response = await withTimeout(
-      fetch("/api/portal-sso", {
+      fetch(apiUrl("/api/portal-sso"), {
         method: "POST",
         credentials: "same-origin",
         cache: "no-store",

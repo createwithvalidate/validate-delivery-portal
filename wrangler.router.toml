@@ -1,0 +1,9 @@
+name = "validate-delivery-portal-router"
+main = "router/worker.mjs"
+compatibility_date = "2026-05-01"
+workers_dev = false
+
+routes = [
+  { pattern = "createwithvalidate.com/delivery*", zone_name = "createwithvalidate.com" },
+  { pattern = "www.createwithvalidate.com/delivery*", zone_name = "createwithvalidate.com" },
+]
