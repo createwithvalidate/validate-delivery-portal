@@ -738,6 +738,42 @@ button:disabled {
   text-transform: uppercase;
 }
 
+/* Startup splash: solid brand screen until the session is resolved. */
+#bootSplash {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  background: #0a0a0b;
+  transition: opacity 0.18s ease;
+}
+
+#bootSplash[hidden] {
+  display: none;
+}
+
+#bootSplash img {
+  width: 168px;
+  height: auto;
+}
+
+.boot-dot {
+  width: 26px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--validate-red);
+  animation: bootPulse 1s ease-in-out infinite;
+}
+
+@keyframes bootPulse {
+  0%, 100% { opacity: 0.35; transform: scaleX(0.6); }
+  50% { opacity: 1; transform: scaleX(1); }
+}
+
 /* Unified portal app rail — identical structure to the portal's sidebar.
    Only shown to VALIDATE admins (body.portal-admin); client reviewers keep
    the plain delivery nav. */

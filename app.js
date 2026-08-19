@@ -5418,6 +5418,14 @@ document.querySelector("#signOut").addEventListener("click", async () => {
   loginForm.reset();
   render();
 });
+function hideBootSplash() {
+  const splash = document.querySelector("#bootSplash");
+  if (splash) splash.hidden = true;
+}
+
+// Safety net: never leave the splash up if startup throws unexpectedly.
+setTimeout(hideBootSplash, 12000);
+
 async function bootPortal() {
   setLoginRole("client");
   applyInviteSignupParams();
@@ -5426,6 +5434,7 @@ async function bootPortal() {
   watchSupabaseAuth();
   startProcessingPoller();
   if (publicReviewParamsFromHash()) {
+    hideBootSplash();
     await openPublicReviewFromHash();
     return;
   }
@@ -5456,6 +5465,7 @@ async function bootPortal() {
     showToast(error.message || "Could not open the Delivery Portal session");
   }
   render();
+  hideBootSplash();
   if (restored) {
     refreshPortalData({ openHash: true, showMissingMessage: false });
   } else {

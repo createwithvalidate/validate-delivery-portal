@@ -12,9 +12,16 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=132" />
+    <link rel="stylesheet" href="styles.css?v=133" />
   </head>
   <body>
+    <!-- Covers startup (config load + silent portal sign-in) so the login
+         screen never flashes for admins arriving from the portal. -->
+    <div id="bootSplash" aria-hidden="true">
+      <img src="assets/validate-logo.png" alt="" />
+      <span class="boot-dot"></span>
+    </div>
+
     <section class="login-screen" id="loginScreen" data-bg-index="0">
       <div class="login-photo-grid" aria-hidden="true">
         <div class="bg-photo bg-photo-wide"></div>
