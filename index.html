@@ -12,7 +12,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=131" />
+    <link rel="stylesheet" href="styles.css?v=132" />
   </head>
   <body>
     <section class="login-screen" id="loginScreen" data-bg-index="0">
@@ -102,7 +102,19 @@
           </span>
         </a>
 
-        <nav class="nav-list">
+        <nav class="nav-list app-rail" aria-label="Portal apps">
+          <a class="rail-item" href="/portal/"><span class="rail-badge">V</span>Home</a>
+          <a class="rail-item" href="/portal/invoices"><span class="rail-badge">I</span>Invoices</a>
+          <a class="rail-item" href="/portal/cashflow/"><span class="rail-badge">$</span>Cash Flow</a>
+          <a class="rail-item" href="/portal/directory"><span class="rail-badge">P</span>Clients &amp; Crew</a>
+          <a class="rail-item" href="/portal/project-orders"><span class="rail-badge">O</span>Project Orders</a>
+          <a class="rail-item" href="/portal/onboarding"><span class="rail-badge">C</span>Onboarding</a>
+          <span class="rail-item rail-active"><span class="rail-badge rail-badge-active">D</span>Delivery</span>
+          <a class="rail-item" href="/portal/timetracker"><span class="rail-badge">T</span>Time Tracker</a>
+        </nav>
+
+        <nav class="nav-list delivery-nav" aria-label="Delivery sections">
+          <span class="portal-nav-label delivery-nav-label">Delivery</span>
           <button class="nav-item active" data-route="clients">
             <span id="homeNavLabel">Clients</span>
           </button>
@@ -112,15 +124,6 @@
           <button class="nav-item" data-route="settings">
             Settings
           </button>
-        </nav>
-
-        <nav class="nav-list portal-nav" aria-label="Portal apps">
-          <span class="portal-nav-label">Portal</span>
-          <a class="nav-item" href="/portal/">Home</a>
-          <a class="nav-item" href="/portal/invoices">Invoices</a>
-          <a class="nav-item" href="/portal/cashflow/">Cash Flow</a>
-          <a class="nav-item" href="/portal/directory">Clients &amp; Crew</a>
-          <a class="nav-item" href="/portal/project-orders">Project Orders</a>
         </nav>
 
         <div class="sidebar-footer">

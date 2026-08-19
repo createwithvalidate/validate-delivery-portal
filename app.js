@@ -1297,6 +1297,8 @@ function updateAuthView() {
   const isLoggedIn = Boolean(state.session);
   loginScreen.hidden = isLoggedIn;
   appShell.hidden = !isLoggedIn;
+  // The unified portal app rail is for the VALIDATE team only.
+  document.body.classList.toggle("portal-admin", state.session?.role === "admin");
   if (!isLoggedIn) {
     startLoginReel();
     startLoginBackgroundRotation();
@@ -1926,6 +1928,37 @@ function portalHandoffParams() {
 function clearPortalHandoffParams() {
   if (!window.location.hash.startsWith("#portal-sso?")) return;
   history.replaceState(null, "", `${location.pathname}${location.search}`);
+}
+
+// Silent single-sign-on: when this page is served on createwithvalidate.com
+// with an active main-portal session, mint a handoff ourselves instead of
+// showing the login screen. Returns null when unavailable (direct pages.dev
+// visits, expired portal session, client users).
+async function requestPortalHandoff() {
+  try {
+    const response = await withTimeout(
+      fetch("/portal/api/auth/delivery-session", {
+        method: "POST",
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: { "Content-Type": "application/json", "X-Portal-Request": "1" },
+        body: "{}",
+      }),
+      "Portal session check took too long.",
+      8000,
+    );
+    if (!response.ok) return null;
+    const result = await response.json().catch(() => ({}));
+    if (!result?.success || !result?.url) return null;
+    const hash = new URL(result.url).hash;
+    if (!hash.startsWith("#portal-sso?")) return null;
+    const params = new URLSearchParams(hash.slice("#portal-sso?".length));
+    const payload = String(params.get("payload") || "");
+    const signature = String(params.get("signature") || "");
+    return payload && signature ? { payload, signature } : null;
+  } catch {
+    return null;
+  }
 }
 
 async function redeemPortalHandoff(handoff) {
@@ -5401,6 +5434,17 @@ async function bootPortal() {
     restored = portalHandoff
       ? await redeemPortalHandoff(portalHandoff)
       : await restoreSupabaseSession();
+    if (!restored) {
+      // No local session — try to ride the main portal's session silently.
+      const silentHandoff = await requestPortalHandoff();
+      if (silentHandoff) {
+        try {
+          restored = await redeemPortalHandoff(silentHandoff);
+        } catch (silentError) {
+          console.warn("Silent portal sign-in failed", silentError);
+        }
+      }
+    }
     if (!restored && state.session) {
       clearAccountSession();
     }
