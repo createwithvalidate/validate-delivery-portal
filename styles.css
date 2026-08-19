@@ -738,6 +738,29 @@ button:disabled {
   text-transform: uppercase;
 }
 
+/* Cross-app links back into the portal, below the app's own nav. */
+.portal-nav {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.portal-nav-label {
+  display: block;
+  margin: 0 0 6px 14px;
+  color: var(--validate-red);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+.portal-nav .nav-item {
+  display: block;
+  font-size: 0.85rem;
+  text-decoration: none;
+}
+
 .primary-button,
 .ghost-button,
 .icon-button {
