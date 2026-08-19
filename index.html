@@ -88,14 +88,10 @@
           <button class="ghost-button" type="button" id="authModeToggle">
             Create account from invite
           </button>
-          <button
-            class="admin-access-button"
-            type="button"
-            id="adminAccess"
-            onclick="window.validatePortalToggleAdmin?.()"
-          >
-            Admin access
-          </button>
+          <!-- Admins never see this screen: they sign in silently through the
+               main portal session. The old "Admin access" toggle only swapped
+               headline copy and implied a separate auth path that never existed. -->
+          <button class="admin-access-button" type="button" id="adminAccess" hidden></button>
         </form>
       </div>
 

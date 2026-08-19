@@ -4012,19 +4012,13 @@ function renderReviewShell(isAdmin) {
         </div>
         <div class="review-head">
           <div>
-            <p class="eyebrow">${version?.label || project?.name || "Video"}</p>
-            <h2>${video.title}</h2>
+            ${version?.label && version.label !== video.title ? `<p class="eyebrow">${version.label}</p>` : ""}
             ${version?.note ? `<p class="muted">${version.note}</p>` : ""}
           </div>
           ${
-            version
+            version && isAdmin
               ? `<div class="inline-actions">
-                  <span class="provider-pill">${version.provider || "Video"}</span>
-                  ${
-                    isAdmin
-                      ? `<span class="status-pill ${summary.hasApproval ? "approved" : ""}">${escapeHtml(versionReviewLabel(version, project))}</span>`
-                      : ""
-                  }
+                  <span class="status-pill ${summary.hasApproval ? "approved" : ""}">${escapeHtml(versionReviewLabel(version, project))}</span>
                 </div>`
               : ""
           }
