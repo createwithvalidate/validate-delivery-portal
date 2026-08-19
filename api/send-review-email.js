@@ -1,12 +1,53 @@
 const resendEndpoint = "https://api.resend.com/emails";
+const supabaseUrl = process.env.SUPABASE_URL || "https://axvnifoamejuxxqhezwr.supabase.co";
+const supabasePublishableKey =
+  process.env.SUPABASE_PUBLISHABLE_KEY || "sb_publishable_IFOVI5nvp8DdOeqAs4lNsg__Iewd4BN";
 
 function sendJson(response, statusCode, body) {
   response.statusCode = statusCode;
   response.setHeader("Content-Type", "application/json");
   response.setHeader("Access-Control-Allow-Origin", "*");
-  response.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  response.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   response.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   response.end(JSON.stringify(body));
+}
+
+function authToken(request) {
+  const header = request.headers.authorization || request.headers.Authorization || "";
+  const match = String(header).match(/^Bearer\s+(.+)$/i);
+  return match ? match[1] : "";
+}
+
+async function supabaseFetch(path, headers, timeoutMs = 6500) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let response;
+  try {
+    response = await fetch(`${supabaseUrl}${path}`, {
+      headers,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    const message = body?.message || body?.error_description || body?.error || "Supabase request failed";
+    throw new Error(message);
+  }
+  return body || [];
+}
+
+async function getUser(token) {
+  return supabaseFetch(
+    "/auth/v1/user",
+    {
+      Accept: "application/json",
+      apikey: supabasePublishableKey,
+      Authorization: `Bearer ${token}`,
+    },
+    5000,
+  );
 }
 
 function escapeHtml(value = "") {
@@ -145,6 +186,20 @@ module.exports = async function handler(request, response) {
   if (request.method !== "POST") {
     response.setHeader("Allow", "POST");
     sendJson(response, 405, { error: "Method not allowed" });
+    return;
+  }
+
+  const token = authToken(request);
+  if (!token) {
+    sendJson(response, 401, { error: "Sign in again before sending review emails." });
+    return;
+  }
+
+  try {
+    const user = await getUser(token);
+    if (!user?.id) throw new Error("Supabase user is missing.");
+  } catch {
+    sendJson(response, 401, { error: "Sign in again before sending review emails." });
     return;
   }
 

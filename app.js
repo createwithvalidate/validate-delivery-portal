@@ -2839,12 +2839,18 @@ async function emailProjectClient({ client, project, video, version, emails: exp
     throw new Error("Open a project before sending");
   }
 
+  const token = await supabaseAccessToken();
+  if (!token) throw new Error("Sign in again before sending review emails.");
+
   const reviewUrl = `${location.origin}${location.pathname}#review/${project.id}`;
   const results = [];
   for (const email of emails) {
     const response = await fetch(apiUrl("/api/send-review-email"), {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
       body: JSON.stringify({
         emailType,
         clientEmail: email,
